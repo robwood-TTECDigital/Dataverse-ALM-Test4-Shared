@@ -149,7 +149,8 @@ function Invoke-AlmValidationRules {
                         param($ModulePath, $ValidationPath, $Client, $SourceContext, $Rule, $Budget, $Cancellation, $Events, $LogDirectory)
                         $ErrorActionPreference = 'Stop'
                         $ProgressPreference = 'SilentlyContinue'
-                        if ($null -eq $Client) { throw 'Validation worker received no Dataverse connection.' }
+                        $workerClient = $Client
+                        if ($null -eq $workerClient) { throw 'Validation worker received no Dataverse connection.' }
                         $acquired = $false
                         try {
                             $Budget.Wait($Cancellation)
@@ -159,14 +160,14 @@ function Invoke-AlmValidationRules {
                             $recordCommand = Get-Command Get-DataverseRecord
                             $metadataCommand = Get-Command Get-DataverseEntityMetadata
                             $requestCommand = Get-Command Invoke-DataverseRequest
-                            function Invoke-DataverseSQL { param($Sql, $Parameters); & $sqlCommand -Connection $Client @PSBoundParameters }
-                            function Get-DataverseRecord { param($TableName, $Id, $Columns, $Top); & $recordCommand -Connection $Client @PSBoundParameters }
+                            function Invoke-DataverseSQL { param($Sql, $Parameters); & $sqlCommand -Connection $workerClient @PSBoundParameters }
+                            function Get-DataverseRecord { param($TableName, $Id, $Columns, $Top); & $recordCommand -Connection $workerClient @PSBoundParameters }
                             Set-Item -Path Function:\Get-DataverseEntityMetadata -Value {
                                 param($EntityName, [switch]$UseMetadataCache, [switch]$ExcludeAttributes, [switch]$ExcludeRelationships, [switch]$ExcludePrivileges)
-                                & $metadataCommand -Connection $Client @PSBoundParameters
+                                & $metadataCommand -Connection $workerClient @PSBoundParameters
                             }
-                            function Invoke-DataverseRequest { param($Method, $Path); & $requestCommand -Connection $Client @PSBoundParameters }
-                            function Get-DataverseConnection { param([switch]$GetDefault); $null = $GetDefault; return $Client }
+                            function Invoke-DataverseRequest { param($Method, $Path); & $requestCommand -Connection $workerClient @PSBoundParameters }
+                            function Get-DataverseConnection { param([switch]$GetDefault); $null = $GetDefault; return $workerClient }
                             . $ValidationPath
                             $context = [pscustomobject]@{
                                 solutionname = $SourceContext.solutionname

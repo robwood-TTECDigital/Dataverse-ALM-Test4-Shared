@@ -4,32 +4,36 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 3.0
 
 $config = $context.Config
-$SourceDirectory = $context.SourceDirectory
+$sourceRoot = [System.IO.Path]::GetFullPath([string]$context.SourceDirectory)
+$tempRoot = [System.IO.Path]::GetFullPath([string]$context.TempDirectory)
 
 & $PSScriptRoot/common/load-dataverse-sdk.ps1
 Import-Module $PSScriptRoot/common/alm.psm1
 
-if (-not (test-path data) ) {
-    new-item data -ItemType Directory
+Push-Location -LiteralPath $sourceRoot
+try {
+
+if (-not (Test-Path (Join-Path $sourceRoot 'data')) ) {
+    New-Item (Join-Path $sourceRoot 'data') -ItemType Directory | Out-Null
 }
 
 # DATA
 
 function exportDataset($datasetname) {
     write-host "Exporting data set '$datasetname'"
-    $tempdatafile = "$($context.TempDirectory)/data-$datasetname.zip"
-    pac data export --schemafile (resolve-path data/$datasetname/schema.xml) --overwrite --datafile $tempdatafile
+    $tempdatafile = Join-Path $tempRoot "data-$datasetname.zip"
+    pac data export --schemafile (Resolve-Path (Join-Path $sourceRoot "data/$datasetname/schema.xml")) --overwrite --datafile $tempdatafile
     if (-not $? -or $LASTEXITCODE -ne 0) { throw "pac data export failed"; }
-    if (test-path data/$datasetname/data) {
-        remove-item -recurse -force data/$datasetname/data
+    if (Test-Path (Join-Path $sourceRoot "data/$datasetname/data")) {
+        Remove-Item -Recurse -Force (Join-Path $sourceRoot "data/$datasetname/data")
     }
-    new-item -type Directory data/$datasetname/data
-    expand-archive -path $tempdatafile data/$datasetname/data
+    New-Item -ItemType Directory (Join-Path $sourceRoot "data/$datasetname/data") | Out-Null
+    Expand-Archive -Path $tempdatafile -DestinationPath (Join-Path $sourceRoot "data/$datasetname/data")
 }
 
 if ($config.ContainsKey("DataSets")) {
     if ($config.DataSets -is [hashtable]) {
-        $config.DataSets.Keys | foreach-object { 
+        $config.DataSets.Keys | foreach-object {
             exportDataset -datasetname $_
 
         }
@@ -41,38 +45,38 @@ if ($config.ContainsKey("DataSets")) {
     }
 }
 
-git add -A data/
+git -C $sourceRoot add -A data/
 if (-not $? -or $LASTEXITCODE -ne 0) { throw "git add failed"; }
 
 # PORTALS
 
-if (-not (test-path portals) ) {
-    new-item portals -ItemType Directory
+if (-not (Test-Path (Join-Path $sourceRoot 'portals')) ) {
+    New-Item (Join-Path $sourceRoot 'portals') -ItemType Directory | Out-Null
 }
 
 if ($config.ContainsKey("Portals")) {
-    if (-not (test-path portals/cfg) ) {
-        new-item portals/cfg -ItemType Directory
+    if (-not (Test-Path (Join-Path $sourceRoot 'portals/cfg')) ) {
+        New-Item (Join-Path $sourceRoot 'portals/cfg') -ItemType Directory | Out-Null
     }
 
     foreach ($portalname in $config.Portals.Keys) {
-   
-        $tempfolder = "$($context.TempDirectory)/portal-$portalname"
-        new-item -type Directory $tempfolder
+
+        $tempfolder = Join-Path $tempRoot "portal-$portalname"
+        New-Item -ItemType Directory $tempfolder | Out-Null
 
         pac paportal download --overwrite --path "$tempfolder" --webSiteId ($config.Portals[$portalname])
         if (-not $? -or $LASTEXITCODE -ne 0) { throw "pac paportal export failed"; }
 
-        $portalcfgpath = "portals/$portalname/cfg"
+        $portalcfgpath = Join-Path $sourceRoot "portals/$portalname/cfg"
         if (test-path $portalcfgpath ) {
             remove-item -force -recurse $portalcfgpath
         }
 
-        new-item -type Directory $portalcfgpath
+        New-Item -ItemType Directory $portalcfgpath | Out-Null
 
         copy-item -recurse $tempfolder/*/* $portalcfgpath -exclude .portalconfig
 
-        $profiletemplatepath = "portals/$portalname/deployment-profile-template.yml"
+        $profiletemplatepath = Join-Path $sourceRoot "portals/$portalname/deployment-profile-template.yml"
         if (-not (test-path $profiletemplatepath)) {
             (
                 "# See https://learn.microsoft.com/en-us/power-pages/configure/power-platform-cli#use-deployment-profile",
@@ -82,11 +86,15 @@ if ($config.ContainsKey("Portals")) {
     }
 }
 
-git add -A portals/
+git -C $sourceRoot add -A portals/
 if (-not $? -or $LASTEXITCODE -ne 0) { throw "git add failed"; }
 
 if ($config.Contains("PostExportScript") -and $config.PostExportScript) {
-    & "./$($config.PostExportScript)"
+    $postExportScriptPath = Join-Path $sourceRoot ([string]$config.PostExportScript)
+    if (-not (Test-Path -LiteralPath $postExportScriptPath -PathType Leaf)) {
+        throw "Configured post-export script was not found: $postExportScriptPath"
+    }
+    & $postExportScriptPath
 }
 
 
@@ -152,4 +160,9 @@ foreach ($solutionconfig in $config.solutions) {
         -LaterSolutionNames $laterSolutionNames
 
     $validdependencysolutionnames += $solutionconfig.name
+}
+
+}
+finally {
+    Pop-Location
 }

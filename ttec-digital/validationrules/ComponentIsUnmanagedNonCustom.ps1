@@ -21,7 +21,7 @@ $solutionId = $solutionIdResult[0].solutionid.ToString()
 # This gives us both top-level components and subcomponents
 # Exclude shell-only components (rootcomponentbehavior = 2) as they are metadata-only references
 $componentsSql = @"
-SELECT 
+SELECT
     sc.objectid,
     sc.componenttype,
     sc.rootsolutioncomponentid,
@@ -51,28 +51,28 @@ $componentsToCheck = @()
 foreach ($component in $solutionComponents) {
     $componentId = $component.objectid.ToString()
     $componentType = $component.componenttype
-    
+
     # Skip if componentId is empty or null
     if ([string]::IsNullOrWhiteSpace($componentId)) {
         Write-Verbose "Skipping component with empty ID"
         continue
     }
-    
+
     # Query msdyn_solutioncomponentsummary for this specific component
     # Note: We filter by solution, component type, and object ID
     $apiPath = "msdyn_solutioncomponentsummaries?`$filter=msdyn_solutionid eq $solutionId and msdyn_componenttype eq $componentType and msdyn_objectid eq $componentId&`$select=msdyn_objectid,msdyn_componenttype,msdyn_name,msdyn_schemaname,msdyn_displayname,msdyn_componenttypename,msdyn_iscustom,msdyn_hasactivecustomization,msdyn_ismanaged,msdyn_componentlogicalname"
-    
+
     try {
         $response = Invoke-DataverseRequest -Method Get -Path $apiPath
-        
+
         if ($response.value -and $response.value.Length -gt 0) {
             # Component was found in summary table
             $summaryComponent = $response.value[0]
-            
+
             # Check if this is an unmanaged, non-custom component
             $isNotCustom = $summaryComponent.msdyn_iscustom -ne $true
             $hasNoCustomization = $summaryComponent.msdyn_hasactivecustomization -ne $true
-            
+
             if ($isNotCustom -and $hasNoCustomization) {
                 $componentsToCheck += [PSCustomObject]@{
                     ComponentId = $componentId
@@ -85,7 +85,7 @@ foreach ($component in $solutionComponents) {
                     HasActiveCustomization = $summaryComponent.msdyn_hasactivecustomization
                     IsManaged = $summaryComponent.msdyn_ismanaged
                     ComponentLogicalName = $summaryComponent.msdyn_componentlogicalname
-                    IsSubcomponent = $component.rootsolutioncomponentid -ne $null
+                    IsSubcomponent = $null -ne $component.rootsolutioncomponentid
                 }
             }
         } else {
@@ -108,7 +108,7 @@ $componentsToCheck | ForEach-Object {
     $componentDisplayName = $_.DisplayName
     $componentTypeName = $_.ComponentTypeName
     $isSubcomponent = $_.IsSubcomponent
-    
+
     # Use schema name if available, otherwise fall back to name or display name
     $displayName = $componentSchemaName
     if (-not $displayName) {
@@ -120,7 +120,7 @@ $componentsToCheck | ForEach-Object {
     if (-not $displayName) {
         $displayName = "Unknown"
     }
-    
+
     # Check if this component should skip validation
     $mode = getValidationRuleMode `
         -ruleName 'ComponentIsUnmanagedNonCustom' `
@@ -128,18 +128,18 @@ $componentsToCheck | ForEach-Object {
         -componentType $componentType `
         -componentSchemaName $componentSchemaName `
         -solutionconfig $context.solutionconfig
-    
+
     # Override with rule-level mode if it's warning
     if ($context.ruleMode -eq 'warning' -and $mode -eq 'error') {
         $mode = 'warning'
     }
-    
+
     if ($mode -eq 'skip') {
         return
     }
-    
+
     $subcomponentNote = if ($isSubcomponent) { "  Is Subcomponent: Yes" } else { "" }
-    
+
     $message = @"
 Component is an out-of-box, unmodified system component.
 Only custom components or components with active customizations should be included in solutions.
@@ -151,7 +151,7 @@ Component Details:
   Has Active Customization: $($_.HasActiveCustomization)
   Is Managed: $($_.IsManaged)$subcomponentNote
 "@
-    
+
     writeResult -type "ComponentIsUnmanagedNonCustom" `
         -componentid $componentId `
         -message $message `

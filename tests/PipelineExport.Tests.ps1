@@ -1,6 +1,7 @@
 BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $script:exportScript = Join-Path $repoRoot 'pipelines/scripts/export.ps1'
+    . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
     # Snapshot generated XML and mapping/pathspec calls inside the mocks: export deletes its
     # mapping files on return. Reset the shared capture below to isolate each regression case.
     if (-not ('AlmExportMappingTestCapture' -as [type])) {
@@ -42,6 +43,7 @@ public static class AlmExportMappingTestCapture
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Command', Justification = 'Mock command signature; Pester inspects these arguments.')]
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'RemainingArguments', Justification = 'The mapping regression mock inspects git pathspec arguments.')]
         param($Command, [Parameter(ValueFromRemainingArguments = $true)][string[]]$RemainingArguments)
+        $global:LASTEXITCODE = 0
     }
 }
 
@@ -71,6 +73,9 @@ Describe 'Export and version changes' {
         Mock Set-DataverseSolution {}
         Mock Register-AlmSolutionVersion { $Version }
         Mock git { ' M solutions/Example/Other/Solution.xml' }
+        # Fork defaults include a Dataverse-dependent postExport hook; export/version
+        # tests isolate orchestration and mapping behavior without provisioning a client.
+        Mock Invoke-Hook {}
         $script:capturedWarnings = @()
         [AlmExportMappingTestCapture]::MappingPath = $null
         [AlmExportMappingTestCapture]::MappingXml = $null
@@ -86,6 +91,30 @@ Describe 'Export and version changes' {
         Should -Invoke Compare-DataverseSolutionComponents -Times 0 -Exactly
         [xml]$xml = Get-Content (Join-Path $script:exportSource 'solutions/Example/Other/Solution.xml') -Raw
         $xml.ImportExportXml.SolutionManifest.Version | Should -Be '1.2.3.5'
+    }
+
+    It 'increments the revision when only a configured code app changes' {
+        New-Item -ItemType Directory -Path (Join-Path $script:exportSource 'apps/Portal') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:exportSource 'apps/Portal/main.js') -Value 'changed'
+        Set-Content -LiteralPath (Join-Path $script:exportSource 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal') })
+    hooks = @{ parallelExportSolution = $false; postExportSolution = $false }
+    export = @{ parallel = $false }
+    buildVersion = @{ default = '1.3'; branches = @{} }
+}
+'@
+        Mock git {
+            if ($RemainingArguments -contains 'apps/Portal') {
+                [AlmExportMappingTestCapture]::GitStatusArguments.AddRange($RemainingArguments)
+                ' M apps/Portal/main.js'
+            }
+        }
+
+        & $script:exportScript -SourceDirectory $script:exportSource -ArtifactStagingDirectory $script:exportArtifacts -TempDirectory $script:exportTemp -BranchName main -DefaultBranchName main
+
+        [AlmExportMappingTestCapture]::GitStatusArguments | Should -Contain 'apps/Portal'
+        Should -Invoke Set-DataverseSolution -Times 1 -Exactly -ParameterFilter { $Version -eq '1.2.3.5' }
     }
 
     It 'uses inline mappings during sequential export without running build commands' {
@@ -113,10 +142,10 @@ Describe 'Export and version changes' {
         & $script:exportScript -SourceDirectory $script:exportSource -ArtifactStagingDirectory $script:exportArtifacts -TempDirectory $script:exportTemp -BranchName main -DefaultBranchName main
 
         Should -Invoke Export-DataverseSolution -Times 1 -Exactly -ParameterFilter { -not [string]::IsNullOrWhiteSpace($MappingFile) }
-        [AlmExportMappingTestCapture]::MappingXml | Should -Match '<Mappings>'
+        [AlmExportMappingTestCapture]::MappingXml | Should -Match '<Mapping>'
         $mappingXml = [xml][AlmExportMappingTestCapture]::MappingXml
-        $mappingXml.Mappings.FileToFile.GetAttribute('map') | Should -Be ([System.IO.Path]::GetFullPath((Join-Path $script:exportSource 'solutions/Example/PluginAssemblies/Example.dll')))
-        $mappingXml.Mappings.FileToFile.GetAttribute('to') | Should -Be ([System.IO.Path]::GetFullPath((Join-Path $script:exportSource 'plugins/Example.dll')))
+        $mappingXml.Mapping.FileToFile.GetAttribute('map') | Should -Be ([System.IO.Path]::GetFullPath((Join-Path $script:exportSource 'solutions/Example/PluginAssemblies/Example.dll')))
+        $mappingXml.Mapping.FileToFile.GetAttribute('to') | Should -Be ([System.IO.Path]::GetFullPath((Join-Path $script:exportSource 'plugins/Example.dll')))
         Test-Path -LiteralPath ([AlmExportMappingTestCapture]::MappingPath) | Should -BeFalse
     }
 

@@ -49,9 +49,9 @@ foreach ($dep in $dependencies) {
     $requiredBaseSolutionId = $dep.requiredcomponentbasesolutionid
     $dependentComponentId = $dep.dependentcomponentobjectid
     $dependentComponentType = $dep.dependentcomponenttype
-    
+
     Write-Verbose "Processing dependency: Required=$requiredComponentId (Type=$requiredComponentType), Dependent=$dependentComponentId (Type=$dependentComponentType)"
-    
+
     # Build dynamic ignore filter for this query
     $ignoreFilter = ""
     if ($context.ignoresolutionnames -and $context.ignoresolutionnames.Length -gt 0) {
@@ -60,7 +60,7 @@ foreach ($dep in $dependencies) {
             $ignoreFilter += " AND s.uniquename NOT LIKE '$pattern'"
         }
     }
-    
+
     # Build filter to exclude valid dependency solutions
     $validDependencyFilter = ""
     if ($context.validdependencysolutionnames -and $context.validdependencysolutionnames.Length -gt 0) {
@@ -207,17 +207,17 @@ WHERE sc.solutionid = @solutionId
             }
         }
     }
-    
+
     # First try to find the required component (not ShellOnly) when no base solution was available
     if ($requiredsolutioncomponents.Length -eq 0 -and -not $baseSolutionEvaluated) {
     $componentSql = @"
-SELECT 
+SELECT
     s.uniquename AS SolutionName,
     s.solutionid AS SolutionId,
     s.ismanaged AS Managed,
     sc.objectid AS ComponentId,
     sc.componenttype AS ComponentType,
-    CASE sc.rootcomponentbehavior 
+    CASE sc.rootcomponentbehavior
         WHEN 0 THEN 'IncludeSubcomponents'
         WHEN 1 THEN 'ShellAndMetadata'
         WHEN 2 THEN 'ShellOnly'
@@ -235,14 +235,14 @@ WHERE sc.objectid = @requiredComponentId
     $validDependencyFilter
 ORDER BY s.installedon ASC, s.createdon ASC
 "@
-    
+
     $requiredsolutioncomponents = @(Invoke-CachedValidationQuery -Cache $lookupCache -Key "component/$requiredComponentType/$requiredComponentId" -Sql $componentSql -Parameters @{
         requiredComponentId = $requiredComponentId
         requiredComponentType = $requiredComponentType
         solutionname = $context.solutionname
     })
     }
-    
+
     # If not found and there's a parent, fallback to earliest non-shell parent layer (only when base solution wasn't available)
     if ($requiredsolutioncomponents.Length -eq 0 -and $requiredParentId -and -not $baseSolutionEvaluated) {
         $parentSql = @"
@@ -252,7 +252,7 @@ SELECT TOP 1
     s.ismanaged AS Managed,
     sc.objectid AS ComponentId,
     sc.componenttype AS ComponentType,
-    CASE sc.rootcomponentbehavior 
+    CASE sc.rootcomponentbehavior
         WHEN 0 THEN 'IncludeSubcomponents'
         WHEN 1 THEN 'ShellAndMetadata'
         WHEN 2 THEN 'ShellOnly'
@@ -269,7 +269,7 @@ WHERE sc.objectid = @requiredParentId
     $validDependencyFilter
 ORDER BY s.installedon ASC, s.createdon ASC
 "@
-        
+
         $requiredsolutioncomponents = @(Invoke-CachedValidationQuery -Cache $lookupCache -Key "parent/$requiredParentId" -Sql $parentSql -Parameters @{
             requiredParentId = $requiredParentId
             solutionname = $context.solutionname
@@ -280,7 +280,7 @@ ORDER BY s.installedon ASC, s.createdon ASC
     if ($requiredsolutioncomponents.Length -eq 0 -and $baseSolutionEvaluated) {
         continue
     }
-    
+
     # If still not found, get the component name anyway and mark as not in any solution
     if ($requiredsolutioncomponents.Length -eq 0) {
         $requiredsolutioncomponents = @([PSCustomObject]@{
@@ -290,7 +290,7 @@ ORDER BY s.installedon ASC, s.createdon ASC
             Behaviour = "IncludeSubcomponents"
         })
     }
-    
+
     # Load names for required and dependent components (only for invalid dependencies)
     if ($requiredsolutioncomponents.Length -gt 0) {
         # Get the solution ID of the first required solution component (if present)
@@ -306,11 +306,11 @@ ORDER BY s.installedon ASC, s.createdon ASC
         else {
             getComponentNames -componentId $requiredComponentId -componentType $requiredComponentType -ValidationContext $context
         }
-        
+
         # Load dependent component name (from the solution being validated)
         Write-Verbose "Looking up dependent component: ID=$dependentComponentId, Type=$dependentComponentType"
         $depNames = getComponentNames -componentId $dependentComponentId -componentType $dependentComponentType -solutionId $solutionId -ValidationContext $context
-        
+
         # Get parent table name for dependent component using parent ID from solutioncomponent
         $dependentParentName = $null
         $parentSql = @"
@@ -323,11 +323,11 @@ WHERE sc.objectid = @componentId AND sc.componenttype = @componentType
             componentId = $dependentComponentId
             componentType = $dependentComponentType
         })
-        
+
         if ($parentResult -and $parentResult.Length -gt 0 -and $parentResult[0].objectid) {
             $parentId = $parentResult[0].objectid.ToString()
             $parentType = $parentResult[0].componenttype
-            
+
             # Skip if parentId is empty or null
             if (-not [string]::IsNullOrWhiteSpace($parentId)) {
                 # Get the parent component name
@@ -337,7 +337,7 @@ WHERE sc.objectid = @componentId AND sc.componenttype = @componentType
                 }
             }
         }
-        
+
         # Add names to all required solution components and add to badDeps
         $requiredsolutioncomponents | ForEach-Object {
             $_ | Add-Member -NotePropertyName ComponentSchemaName -NotePropertyValue (&{if ($reqNames) { $reqNames.ComponentSchemaName } else { $null }}) -Force
@@ -346,7 +346,7 @@ WHERE sc.objectid = @componentId AND sc.componenttype = @componentType
             $_ | Add-Member -NotePropertyName DependentComponentSchemaName -NotePropertyValue (&{if ($depNames) { $depNames.ComponentSchemaName } else { $null }}) -Force
             $_ | Add-Member -NotePropertyName DependentComponentDisplayName -NotePropertyValue (&{if ($depNames) { $depNames.ComponentDisplayName } else { $null }}) -Force
             $_ | Add-Member -NotePropertyName DependentComponentParentName -NotePropertyValue $dependentParentName -Force
-            
+
             $badDeps += $_
         }
     }
@@ -356,31 +356,31 @@ WHERE sc.objectid = @componentId AND sc.componenttype = @componentType
 $badDeps | Select-Object -Unique ComponentId, SolutionName | ForEach-Object {
     $componentId = $_.ComponentId
     $solutionName = $_.SolutionName
-    
+
     $matchingDeps = $badDeps | Where-Object { $_.ComponentId -eq $componentId -and $_.SolutionName -eq $solutionName }
-    
+
     # Get component type and schema name for skip check
     $componentType = if ($matchingDeps.Length -gt 0) { $matchingDeps[0].ComponentType } else { 0 }
     $componentSchemaName = if ($matchingDeps.Length -gt 0) { $matchingDeps[0].ComponentSchemaName } else { $null }
-    
+
     # Check if this component should skip validation
     $mode = getValidationRuleMode -ruleName 'DependencyOnSolutionNotAllowed' -componentId $componentId -componentType $componentType -componentSchemaName $componentSchemaName -solutionconfig $context.solutionconfig
-    
+
     # Override with rule-level mode if it's warning
     if ($context.ruleMode -eq 'warning' -and $mode -eq 'error') {
         $mode = 'warning'
     }
-    
+
     if ($mode -eq 'skip') {
         return
     }
-    
+
     $detailsText = $matchingDeps[0] | Format-List | Out-String
     $dependencyOrderDetails = ''
     if ($context.PSObject.Properties['laterSolutionNames'] -and $context.laterSolutionNames -contains $solutionName) {
         $dependencyOrderDetails = "`r`nThe required component is in solution '$solutionName', which is configured later in the solution order. A solution cannot depend on components in a solution that appears later in the order."
     }
-    
+
     writeResult -type "DependencyOnSolutionNotAllowed" `
         -componentid $componentId `
         -message "`r`nThe solution $($context.solutionname) depends on solution $solutionName for a component but this is not in the valid list of dependency solutions ($($context.validdependencysolutionnames))`r`n$detailsText$dependencyOrderDetails" `

@@ -11,7 +11,7 @@ function getEnvironmentId($connection = (getGlobalCrmConnection)) {
     $request = new-object Microsoft.Crm.Sdk.Messages.RetrieveCurrentOrganizationRequest
     $request.AccessType = "Internet"
     $response = $connection.Execute($request)
-    
+
     $environmentid = $response.Detail.EnvironmentId
 
     if (-not $environmentid) {

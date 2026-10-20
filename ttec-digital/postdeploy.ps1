@@ -3,15 +3,27 @@ param($context)
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 3.0
 
+if (-not $context.ContainsKey('ArtifactsPath')) {
+    throw 'postDeploy requires Context.ArtifactsPath.'
+}
+$artifactRoot = [System.IO.Path]::GetFullPath([string]$context.ArtifactsPath)
+$connectionreferences = @{}
+$environmentvariables = @{}
+$dependencysolutionfiles = @()
+$postdepsolutionfiles = @()
+$portalconfig = @{}
+$generalconfig = @{}
+Push-Location -LiteralPath $artifactRoot
+try {
+
 & $PSScriptRoot/common/load-dataverse-sdk.ps1
 import-module $PSScriptRoot/common/alm.psm1
 
 $config = $context.Config
-
-
-[Hashtable] $portalconfig = @{}
-[Hashtable] $generalconfig = @{
-    ServiceAccountUpn = $serviceaccountupn
+$importTimeoutSeconds = if ($config.ContainsKey('importTimeoutSeconds') -and $null -ne $config.importTimeoutSeconds) {
+    [int]$config.importTimeoutSeconds
+} else {
+    10800
 }
 
 
@@ -38,9 +50,11 @@ get-item env:CONFIG_* | foreach-object {
 }
 
 if ($config.Contains("DependencySolutions")) {
-    $dependencysolutionfiles += @($config.DependencySolutions) | where-object { $_ } 
+    $dependencysolutionfiles = @($config.DependencySolutions | Where-Object { $_ } | ForEach-Object {
+        Join-Path -Path $artifactRoot -ChildPath ([string]$_)
+    })
 
-    deploySolutionSet -solutionfiles $dependencysolutionfiles -description "dependency"
+    deploySolutionSet -solutionfiles $dependencysolutionfiles -description "dependency" -importTimeoutSeconds $importTimeoutSeconds
 }
 
 
@@ -48,7 +62,7 @@ if ($config.Contains("DataSets")) {
     if ($config.DataSets -is [hashtable]) {
         $config.DataSets.GetEnumerator() | ForEach-Object {
             if ($_.Value.Contains("Stage") -and $_.Value.Stage -eq "BeforeTeams") {
-                deployDataset -datapath "data/$($_.Key).zip"            
+                deployDataset -datapath (Join-Path $artifactRoot "data/$($_.Key).zip")
             }
         }
     } else {
@@ -56,32 +70,32 @@ if ($config.Contains("DataSets")) {
     }
 }
 
-if ($config.Contains("AadGroupTeams")) {    
+if ($config.Contains("AadGroupTeams")) {
     @($config.AadGroupTeams) | foreach-object {
         $aadGroupId = replaceConfigPlaceholders -template $_.AadGroupId -config $generalconfig
         ensureAadGroupTeam -businessunitname $_.BusinessUnitName -teamname $_.TeamName -teamid:$_.TeamId -aadgroupid $aadGroupId -rolenames $_.RoleNames
     }
 }
 
-if ($config.Contains("BuDefaultTeams")) {    
+if ($config.Contains("BuDefaultTeams")) {
     @($config.BuDefaultTeams) | foreach-object {
         ensureBuDefaultTeam -businessunitname $_.BusinessUnitName -rolenames $_.RoleNames
     }
 }
 
-if ($config.Contains("OwnerTeams")) {    
+if ($config.Contains("OwnerTeams")) {
     @($config.OwnerTeams) | foreach-object {
         ensureOwnerTeam -businessunitname $_.BusinessUnitName -teamid:$_.TeamId -teamname $_.TeamName -rolenames $_.RoleNames
     }
 }
 
-if ($config.Contains("AccessTeams")) {    
+if ($config.Contains("AccessTeams")) {
     @($config.AccessTeams) | foreach-object {
         ensureAccessTeam -businessunitname $_.BusinessUnitName -teamid:$_.TeamId -teamname $_.TeamName
     }
 }
 
-if ($config.Contains("ApplicationUsers")) {    
+if ($config.Contains("ApplicationUsers")) {
     @($config.ApplicationUsers) | foreach-object {
         $applicationid = replaceConfigPlaceholders -template $_.ApplicationId -config $generalconfig
         ensureAppUser -applicationid $applicationid -businessunitname $_.BusinessUnitName -rolenames $_.RoleNames
@@ -103,11 +117,8 @@ if ($config.Contains("CanvasAppSharing")) {
         $groupids = @($_.AadGroupIds | foreach-object { replaceConfigPlaceholders -template $_ -config $generalconfig })
         shareCanvasApp `
             -uniquename $_.UniqueName `
-            -aadgroupids $groupids `
-            -serviceaccountupn:$serviceaccountupn `
-            -serviceaccountpassword:$serviceaccountpassword `
-            -serviceaccounttotpsecret:$serviceaccounttotpsecret 
-    }  
+            -aadgroupids $groupids
+    }
 }
 
 if ($config.Contains("FlowSharing")) {
@@ -115,7 +126,7 @@ if ($config.Contains("FlowSharing")) {
         ensureAdminPowerAppsConnection
         $groupids = @($_.AadGroupIds | foreach-object { replaceConfigPlaceholders -template $_ -config $generalconfig })
         shareFlow -workflowid $_.WorkflowId -aadgroupids $groupids
-    }  
+    }
 }
 
 if ($config.Contains("DataSets")) {
@@ -123,26 +134,32 @@ if ($config.Contains("DataSets")) {
     if ($config.DataSets -is [hashtable]) {
         $config.DataSets.GetEnumerator() | ForEach-Object {
             if ((-not $_.Value.Contains("Stage")) -or $_.Value.Stage -ne "BeforeTeams") {
-                deployDataset -datapath "data/$($_.Key).zip"            
+                deployDataset -datapath (Join-Path $artifactRoot "data/$($_.Key).zip")
             }
         }
     } else {
         @($config.DataSets) | foreach-object {
-            deployDataset -datapath "data/$_.zip"  
+            deployDataset -datapath (Join-Path $artifactRoot "data/$_.zip")
         }
     }
 }
 
 if ($config.Contains("Portals")) {
     $config.Portals.Keys | foreach-object {
-        deployPortal -path "portals/$_/cfg" -config $portalconfig
+        deployPortal -path (Join-Path $artifactRoot "portals/$_/cfg") -config $portalconfig
     }
 }
 
 if ($config.Contains("PostDependencySolutions")) {
-    $postdepsolutionfiles = @($config.PostDependencySolutions | where-object { $_ } )
+    $postdepsolutionfiles = @($config.PostDependencySolutions | Where-Object { $_ } | ForEach-Object {
+        Join-Path -Path $artifactRoot -ChildPath ([string]$_)
+    })
 
-    deploySolutionSet -solutionfiles $postdepsolutionfiles -description "post-dependency"
+    deploySolutionSet -solutionfiles $postdepsolutionfiles -description "post-dependency" -importTimeoutSeconds $importTimeoutSeconds
 }
 
 synapse_deploy -config $config
+}
+finally {
+    Pop-Location
+}

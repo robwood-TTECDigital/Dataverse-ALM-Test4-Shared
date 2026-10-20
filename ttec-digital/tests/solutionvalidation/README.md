@@ -44,7 +44,7 @@ Get-DataverseConnection -Interactive -SetAsDefault
 ### Run Full Test Suite
 
 ```powershell
-.\tests\Setup-ValidationRuleTests.ps1
+.\ttec-digital\tests\solutionvalidation\Invoke-SolutionValidationRuleTests.ps1
 ```
 
 This will:
@@ -57,19 +57,19 @@ This will:
 ### Run Setup Only
 
 ```powershell
-.\tests\Setup-ValidationRuleTests.ps1 -SetupOnly
+.\ttec-digital\tests\solutionvalidation\Invoke-SolutionValidationRuleTests.ps1 -SetupOnly
 ```
 
 ### Run Tests Only (requires setup to be run first)
 
 ```powershell
-.\tests\Setup-ValidationRuleTests.ps1 -TestOnly
+.\ttec-digital\tests\solutionvalidation\Invoke-SolutionValidationRuleTests.ps1 -TestOnly
 ```
 
 ### Cleanup Test Artifacts
 
 ```powershell
-.\tests\Setup-ValidationRuleTests.ps1 -Cleanup
+.\ttec-digital\tests\solutionvalidation\Invoke-SolutionValidationRuleTests.ps1 -Cleanup
 ```
 
 ## Test Scenarios
@@ -116,11 +116,11 @@ This will:
 
 Each validation rule error now includes a link to detailed documentation. Links are automatically generated based on the Git remote:
 
-- **Azure DevOps**: `https://dev.azure.com/{org}/{project}/_git/{repo}?path=/docs/validation-rules/{rule}.md&version=GB{branch}`
-- **GitHub**: `https://github.com/{owner}/{repo}/blob/{branch}/docs/validation-rules/{rule}.md`
+- **Azure DevOps**: `https://dev.azure.com/{org}/{project}/_git/{repo}?path=/ttec-digital/validationrules/{rule}.md&version=GB{branch}`
+- **GitHub**: `https://github.com/{owner}/{repo}/blob/{branch}/ttec-digital/validationrules/{rule}.md`
 
 ## Adding New Tests
 
 1. Add the test scenario setup in `Setup-TestComponents` function
 2. Update the test expectations in `Run-ValidationTests` function
-3. Add documentation in `docs/validation-rules/` for any new rules
+3. Add documentation in `ttec-digital/validationrules/` for any new rules

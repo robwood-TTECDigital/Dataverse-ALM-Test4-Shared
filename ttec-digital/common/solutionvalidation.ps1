@@ -22,7 +22,7 @@ function getComponentNames(
     [Parameter()][string] $solutionId,
     [Parameter()][psobject]$ValidationContext
 ) {
-    
+
     # Cache for component definitions to avoid repeated lookups
     if (-not (Test-Path variable:script:componentDefinitionCache)) {
         Set-Variable -Scope Script -Name componentDefinitionCache -Value @{}
@@ -47,12 +47,12 @@ function getComponentNames(
     if ($nameCache.ContainsKey($componentKey)) {
         return $nameCache[$componentKey]
     }
-    
+
     # Determine the table name and column names based on component type
     $tablename = $null
     $schemanamecolumn = $null
     $displaynamecolumn = $null
-    
+
     # Try to get from cache first
     if ($definitionCache.ContainsKey($componentType)) {
         $cached = $definitionCache[$componentType]
@@ -83,7 +83,7 @@ function getComponentNames(
             380 = "environmentvariabledefinition"
             381 = "environmentvariablevalue"
         }
-        
+
         if ($wellKnownTables.ContainsKey($componentType)) {
             $tablename = $wellKnownTables[$componentType]
         }
@@ -91,11 +91,11 @@ function getComponentNames(
             # Try to look up the component definition dynamically for non-standard types
             try {
                 Write-Verbose "Looking up component definition for type $componentType"
-                
+
                 # Use SQL to query solutioncomponentdefinition
                 $defSql = "SELECT primaryentityname FROM solutioncomponentdefinition WHERE solutioncomponenttype = @componentType"
                 $defResult = Invoke-DataverseSQL -Sql $defSql -Parameters @{componentType = $componentType}
-                
+
                 if ($defResult -and $defResult.Length -gt 0 -and $defResult[0].primaryentityname) {
                     $tablename = $defResult[0].primaryentityname
                 }
@@ -104,7 +104,7 @@ function getComponentNames(
                 Write-Verbose "Could not look up component definition for type $componentType : $_"
             }
         }
-        
+
         # If we have a table name, get metadata to find the name columns
         if ($tablename) {
             try {
@@ -115,7 +115,7 @@ function getComponentNames(
                     'canvasapp' = @{Schema = 'name'; Display = 'displayname'}
                     'environmentvariabledefinition' = @{Schema = 'schemaname'; Display = 'displayname'}
                 }
-                
+
                 if ($specialCases.ContainsKey($tablename)) {
                     $schemanamecolumn = $specialCases[$tablename].Schema
                     $displaynamecolumn = $specialCases[$tablename].Display
@@ -124,12 +124,12 @@ function getComponentNames(
                 else {
                     # Get entity metadata to find the primary name attribute using shared cache
                     $entityMetadata = Get-DataverseEntityMetadata -EntityName $tablename -UseMetadataCache -ExcludeAttributes -ExcludeRelationships -ExcludePrivileges
-                    
+
                     if ($entityMetadata -and $entityMetadata.PrimaryNameAttribute) {
                         # Use PrimaryNameAttribute from metadata as both schema and display name column
                         $schemanamecolumn = $entityMetadata.PrimaryNameAttribute
                         $displaynamecolumn = $schemanamecolumn
-                        
+
                         Write-Verbose "Found component definition: Type=$componentType, Table=$tablename, SchemaColumn=$schemanamecolumn, DisplayColumn=$displaynamecolumn"
                     }
                     else {
@@ -141,7 +141,7 @@ function getComponentNames(
                 Write-Verbose "Error getting metadata for table $tablename : $_"
             }
         }
-        
+
         # Cache the result (even if null)
         $definitionCache[$componentType] = @{
             TableName = $tablename
@@ -149,34 +149,33 @@ function getComponentNames(
             DisplayNameColumn = $displaynamecolumn
         }
     }
-    
+
     if (-not $tablename) {
         Write-Verbose "No table name determined for component type $componentType"
         return $null
     }
-    
+
     try {
         # Query the component by ID using cmdlet
-        $idColumn = $tablename + "id"
         $columns = @($schemanamecolumn)
         if ($displaynamecolumn -and $displaynamecolumn -ne $schemanamecolumn) {
             $columns += $displaynamecolumn
         }
-        
+
         $record = Get-DataverseRecord -TableName $tablename -Id $componentId -Columns $columns -Top 1
-        
+
         if ($record) {
             $schemaName = $null
             $displayName = $null
-            
+
             if ($record.PSObject.Properties.Name -contains $schemanamecolumn) {
                 $schemaName = $record.$schemanamecolumn
             }
-            
+
             if ($displaynamecolumn -and ($record.PSObject.Properties.Name -contains $displaynamecolumn)) {
                 $displayName = $record.$displaynamecolumn
             }
-            
+
             # Special handling for attributes and entities to get UserLocalizedLabel
             if ($componentType -eq 2 -and $schemaName) {
                 # For attributes, get the display name from metadata using RetrieveAttributeRequest
@@ -185,7 +184,7 @@ function getComponentNames(
                     $request = New-Object Microsoft.Xrm.Sdk.Messages.RetrieveAttributeRequest
                     $request.MetadataId = [Guid]$componentId
                     $request.RetrieveAsIfPublished = $true
-                    
+
                     $response = $conn.Execute($request)
                     if ($response.AttributeMetadata -and $response.AttributeMetadata.DisplayName.UserLocalizedLabel) {
                         $displayName = $response.AttributeMetadata.DisplayName.UserLocalizedLabel.Label
@@ -207,7 +206,7 @@ function getComponentNames(
                     Write-Verbose "Could not get entity display name from metadata: $_"
                 }
             }
-            
+
             $names = [PSCustomObject]@{
                 ComponentSchemaName = $schemaName
                 ComponentDisplayName = $displayName
@@ -215,11 +214,11 @@ function getComponentNames(
             $nameCache[$componentKey] = $names
             return $names
         }
-        
+
         Write-Verbose "Component not found: ComponentId=$componentId, ComponentType=$componentType, Table=$tablename"
         $nameCache[$componentKey] = $null
         return $null
-        
+
     } catch {
         Write-Warning "Error retrieving component names for ComponentId=$componentId, ComponentType=$componentType, Table=$tablename : $_"
         return $null
@@ -229,11 +228,11 @@ function getComponentNames(
 # Function to detect Git platform and build documentation link
 function Get-ValidationRuleDocLink([string]$ruleType) {
     $docRelativePath = "ttec-digital/validationrules/$ruleType.md"
-    
+
     # Try to get the git remote URL
     try {
         $gitRemote = git remote get-url origin 2>$null
-        
+
         if ($gitRemote) {
             # Detect Azure DevOps
             if ($gitRemote -match "dev\.azure\.com" -or $gitRemote -match "visualstudio\.com") {
@@ -241,36 +240,36 @@ function Get-ValidationRuleDocLink([string]$ruleType) {
                 # https://dev.azure.com/{org}/{project}/_git/{repo}
                 # https://{org}.visualstudio.com/{project}/_git/{repo}
                 # git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
-                
+
                 if ($gitRemote -match "dev\.azure\.com/([^/]+)/([^/]+)/_git/([^/]+)") {
                     $org = $matches[1]
                     $project = $matches[2]
                     $repo = $matches[3] -replace '\.git$', ''
-                    
+
                     # Get current branch
                     $branch = git rev-parse --abbrev-ref HEAD 2>$null
                     if (-not $branch) { $branch = "main" }
-                    
+
                     return "https://dev.azure.com/$org/$project/_git/$repo`?path=/$docRelativePath&version=GB$branch"
                 }
                 elseif ($gitRemote -match "([^@]+)\.visualstudio\.com/([^/]+)/_git/([^/]+)") {
                     $org = $matches[1]
                     $project = $matches[2]
                     $repo = $matches[3] -replace '\.git$', ''
-                    
+
                     $branch = git rev-parse --abbrev-ref HEAD 2>$null
                     if (-not $branch) { $branch = "main" }
-                    
+
                     return "https://$org.visualstudio.com/$project/_git/$repo`?path=/$docRelativePath&version=GB$branch"
                 }
                 elseif ($gitRemote -match "ssh\.dev\.azure\.com:v3/([^/]+)/([^/]+)/([^/]+)") {
                     $org = $matches[1]
                     $project = $matches[2]
                     $repo = $matches[3] -replace '\.git$', ''
-                    
+
                     $branch = git rev-parse --abbrev-ref HEAD 2>$null
                     if (-not $branch) { $branch = "main" }
-                    
+
                     return "https://dev.azure.com/$org/$project/_git/$repo`?path=/$docRelativePath&version=GB$branch"
                 }
             }
@@ -279,15 +278,15 @@ function Get-ValidationRuleDocLink([string]$ruleType) {
                 # GitHub URL patterns:
                 # https://github.com/{owner}/{repo}.git
                 # git@github.com:{owner}/{repo}.git
-                
+
                 if ($gitRemote -match "github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$") {
                     $owner = $matches[1]
                     $repo = $matches[2] -replace '\.git$', ''
-                    
+
                     # Get current branch
                     $branch = git rev-parse --abbrev-ref HEAD 2>$null
                     if (-not $branch) { $branch = "main" }
-                    
+
                     return "https://github.com/$owner/$repo/blob/$branch/$docRelativePath"
                 }
             }
@@ -296,7 +295,7 @@ function Get-ValidationRuleDocLink([string]$ruleType) {
     catch {
         Write-Verbose "Could not detect git remote: $_"
     }
-    
+
     # Fallback: return just the relative path
     return $docRelativePath
 }
@@ -324,7 +323,7 @@ function validateSolution(
     #Standard Solution Checker
 
     $resultsfolder = "$([IO.Path]::GetTempPath())/$([IO.Path]::GetRandomFileName())/$solutionname.results"
- 
+
     try {
 
         new-item -itemtype Directory $resultsfolder | out-null
@@ -403,12 +402,6 @@ function validateSolution(
         $errors = @()
     }
 
-    # In warning mode, treat all errors as warnings
-    if ($validationMode -eq 'warning') {
-        $warnings += $errors
-        $errors = @()
-    }
-
     # Output warnings
     $validationClock.Stop()
     $SummaryStore[$solutionname] = [pscustomobject]@{
@@ -449,7 +442,7 @@ function validateSolution(
 function writeResult([Parameter(Mandatory)]$type, [Parameter(Mandatory)] $message, [Parameter(Mandatory)] $componentid, [Parameter()][bool]$asWarning = $false) {
     $docLink = Get-ValidationRuleDocLink -ruleType $type
     $fullMessage = "[$type : $componentid] $message`r`nDocumentation: $docLink"
-    
+
     # Return structured output for the validation system to process
     return [PSCustomObject]@{
         Message = $fullMessage
@@ -469,21 +462,21 @@ function getValidationRuleMode(
     if (-not ($solutionconfig.ContainsKey("skipValidationRules") -and $solutionconfig.skipValidationRules)) {
         return 'error'
     }
-    
+
     foreach ($skipConfig in $solutionconfig.skipValidationRules) {
         if ($skipConfig.ruleName -ne $ruleName) {
             continue
         }
-        
+
         # Determine the mode for this configuration
         $mode = 'error'  # default
         if ($skipConfig.ContainsKey('mode') -and $skipConfig.mode) {
             $mode = $skipConfig.mode.ToLower()
         }
-        
+
         # If only ruleName is specified (no component filters), it was already handled at the rule level
         # This function handles component-specific configurations
-        
+
         # Check componentId match
         if ($skipConfig.ContainsKey('componentId') -and $skipConfig.componentId) {
             if ($skipConfig.componentId.ToString() -eq $componentId.ToString()) {
@@ -492,7 +485,7 @@ function getValidationRuleMode(
             }
             continue  # componentId specified but didn't match, check next config
         }
-        
+
         # Check componentType match
         if ($skipConfig.ContainsKey('componentType') -and $skipConfig.componentType) {
             if ($skipConfig.componentType -eq $componentType) {
@@ -501,7 +494,7 @@ function getValidationRuleMode(
             }
             continue  # componentType specified but didn't match, check next config
         }
-        
+
         # Check componentSchemaName match
         if ($skipConfig.ContainsKey('componentSchemaName') -and $skipConfig.componentSchemaName -and $componentSchemaName) {
             if ($skipConfig.componentSchemaName -eq $componentSchemaName) {
@@ -511,7 +504,7 @@ function getValidationRuleMode(
             continue  # componentSchemaName specified but didn't match, check next config
         }
     }
-    
+
     return 'error'
 }
 
@@ -535,7 +528,7 @@ function validateSolutionInternal(
     [string]$LogDirectory = '',
     [System.Collections.Generic.List[object]]$RuleTimings,
     [Parameter()][AllowEmptyCollection()][string[]]$LaterSolutionNames = @()
-) {   
+) {
 
     $script:componentDefinitionCache = @{}
     $script:componentNameCache = @{}
@@ -557,11 +550,11 @@ function validateSolutionInternal(
     $rules = [System.Collections.Generic.List[object]]::new()
     get-childitem $PSScriptRoot/../validationrules -filter *.ps1 | ForEach-Object {
         $ruleName = $_.BaseName
-        
+
         # Check if this rule should be skipped or run in warning mode for this solution
         $ruleMode = 'error'  # default
         $skipRule = $false
-        
+
         if ( $solutionconfig.ContainsKey("skipValidationRules") -and $solutionconfig.skipValidationRules) {
             foreach ($skipConfig in $solutionconfig.skipValidationRules) {
                 if ($skipConfig.ruleName -eq $ruleName) {
@@ -573,7 +566,7 @@ function validateSolutionInternal(
                         if ($skipConfig.ContainsKey('mode') -and $skipConfig.mode) {
                             $configMode = $skipConfig.mode.ToLower()
                         }
-                        
+
                         if ($configMode -eq 'skip') {
                             $skipRule = $true
                             Send-AlmWorkerEvent -Events $LogEvents -SolutionName $solutionname -Phase "Validate:$ruleName" -Message 'Skipped by configuration'
@@ -587,7 +580,7 @@ function validateSolutionInternal(
                 }
             }
         }
-        
+
         if (-not $skipRule) {
             $rules.Add([pscustomobject]@{ Name = $ruleName; Path = $_.FullName; Mode = $ruleMode })
         }

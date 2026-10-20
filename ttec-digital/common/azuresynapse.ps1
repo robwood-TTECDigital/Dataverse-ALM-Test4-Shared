@@ -24,7 +24,7 @@ function synapse_export([Parameter(Mandatory)] $config) {
         }
 
         write-host "##[group]Exporting Synapse assets"
-            
+
         $temppath = [IO.Path]::GetTempPath() + "/" + [Guid]::NewGuid()
 
         new-item -type Directory $temppath
@@ -41,10 +41,10 @@ function synapse_export([Parameter(Mandatory)] $config) {
 
 
         function copyItemsWithFolderProperty([Parameter(Mandatory)] $sourcefoldername, [Parameter(Mandatory)] $targetfoldername, [Parameter(Mandatory)] $integrationfoldername) {
-            
+
             new-item -ItemType Directory "$targetfoldername/$integrationfoldername" -Force
             "File to keep folder present if empty" | out-file $targetfoldername/$integrationfoldername/keep.me
-            
+
             foreach ($file in (get-childitem $temppath/synapse-development/$sourcefoldername)) {
                 $json = get-content -raw -Encoding UTF8 $file.FullName | convertfrom-json -depth 100
                 if ($json.properties.PSObject.Properties.Name -contains 'folder' -and $json.properties.folder.name -eq $integrationfoldername) {
@@ -57,7 +57,7 @@ function synapse_export([Parameter(Mandatory)] $config) {
             if (test-path $targetfoldername) {
                 remove-item -Recurse $targetfoldername
             }
-            
+
             new-item -ItemType Directory $targetfoldername
 
             "File to keep folder present if empty" | out-file $targetfoldername/keep.me
@@ -93,9 +93,9 @@ function synapse_export([Parameter(Mandatory)] $config) {
                 $json = get-content -raw -Encoding UTF8 $file.FullName | convertfrom-json -depth 100
                 # If any referenced pipeline was copied above
                 if ($json.properties.pipelines | where-object { test-path "pipelines/$integrationfoldername/$($_.pipelineReference.referenceName).json" } ) {
-                    copy-item -Verbose $file triggers/$integrationfoldername      
+                    copy-item -Verbose $file triggers/$integrationfoldername
                 }
-            }    
+            }
         }
 
         $includelinkedservices = @()
@@ -141,22 +141,22 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                 -and $result.AdditionalProperties.ContainsKey("status")  `
                 -and $result.AdditionalProperties["status"] -eq "Failed"
         ) {
-            throw "Synapse Import failure: $($result.AdditionalProperties["error"] | convertto-json -depth 100)"
+            throw "Synapse import reported failure."
         }
-    
-        if ($result.PSObject.Properties.Name -contains "Properties" -and $result.Properties -eq $null) {
-            throw "Synapse Import failure: $($result | convertto-json -depth 100)"
+
+        if ($result.PSObject.Properties.Name -contains "Properties" -and $null -eq $result.Properties) {
+            throw "Synapse import returned no properties."
         }
-    
-        Write-Output $result
+
+        Write-Host "Synapse import completed."
     }
 
     function ensureSynapseManagedPrivateEndpoint($synapseworkspacename, $name, $definition) {
 
         $tempfile = [IO.Path]::GetTempPath() + "/" + [Guid]::NewGuid() + ".json"
-    
+
         $definition | out-file -Encoding UTF8 ($tempfile)
-    
+
         try {
             $result = New-AzSynapseManagedPrivateEndpoint -WorkspaceName $synapseworkspacename -Name "$name" -DefinitionFile $tempfile
             if (
@@ -164,19 +164,19 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                     -and $result.AdditionalProperties.ContainsKey("status")  `
                     -and $result.AdditionalProperties["status"] -eq "Failed"
             ) {
-                throw "Synapse Import failure: $($result.AdditionalProperties["error"] | convertto-json -depth 100)"
+                throw "Synapse managed private endpoint import reported failure."
             }
-            
+
             if ($result.PSObject.Properties.Name -contains "Properties" -and $null -eq $result.Properties) {
-                throw "Synapse Import failure: $($result | convertto-json -depth 100)"
+                throw "Synapse managed private endpoint import returned no properties."
             }
-            
-            Write-Output $result    
+
+            Write-Host "Synapse managed private endpoint '$name' processed."
         }
         finally {
             remove-item -Force $tempfile -ErrorAction SilentlyContinue
         }
-    
+
     }
 
     function processManagedPrivateEndpoints($synapseworkspacename) {
@@ -186,7 +186,6 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                 write-host "Processing managed private endpoint '$($endpoint.Name)'"
                 $endpoint.Name = (replaceEnvVarPlaceholders $endpoint.Name)
                 $endpoint.Definition = (replaceEnvVarPlaceholders $endpoint.Definition)
-                $endpoint.Definition | write-host
                 ensureSynapseManagedPrivateEndpoint -synapseworkspacename $synapseworkspacename -name $endpoint.Name -definition $endpoint.Definition
             }
         }
@@ -199,7 +198,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
             $linkedservicefilejson = get-content -raw -Encoding UTF8 $linkedservicefile | convertfrom-json -Depth 100
 
             if ($linkedservicefilejson.properties.typeProperties.PSObject.Properties.Name -contains "encryptedCredential") {
-          
+
                 if ($linkedservicefilejson.properties.typeProperties.PSObject.Properties.Name -contains "servicePrincipalCredentialType" -and $linkedservicefilejson.properties.typeProperties.servicePrincipalCredentialType -eq "ServicePrincipalKey") {
                     Add-Member -InputObject $linkedservicefilejson.properties.typeProperties -Type NoteProperty -Name servicePrincipalCredential -value ""
                     # Value will be set below
@@ -215,7 +214,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
 
                 $linkedservicefilejson.properties.typeProperties.PSObject.Properties.Remove("encryptedCredential")
             }
-            
+
             foreach ($property in $linkedservicefilejson.properties.typeProperties.PSObject.Properties) {
 
                 $propertyenvvarname = "SYNAPSELINKSVC_$($linkedservicefile.BaseName)_$($property.Name)" -replace " ", "_"
@@ -224,7 +223,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                 }
 
                 $propertyenvvaritem = (get-item env:$propertyenvvarname)
-                write-host "Value for property $($property.Name) is '$($propertyenvvaritem.Value)'"
+                Write-Host "Applying linked-service property '$($property.Name)'."
 
                 if ($property.Name -eq "servicePrincipalCredential" -or $property.Name -eq "password") {
                     $property.Value = [PSCustomObject]@{
@@ -236,10 +235,10 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                     $property.Value = $propertyenvvaritem.Value
                 }
 
-                
+
             }
 
-            $linkedservicefilejson | convertto-json -depth 100 | write-host 
+            Write-Host "Prepared linked-service '$($linkedservicefile.BaseName)' with $($linkedservicefilejson.properties.typeProperties.PSObject.Properties.Count) properties."
 
             $linkedservicefilejson | convertto-json -Depth 100 | out-file -Force -Encoding utf8 "$($linkedservicefile.FullName).tmp"
 
@@ -262,13 +261,13 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
 
         # Find existing linked services that match the filters but aren't in the lastest files and delete them
         Get-AzSynapseLinkedService -WorkspaceName $synapseworkspacename | Where-Object {
-            
+
             $linkedservice = $_
             (
                 ($includelinkedservices | where-object { $linkedservice.Name -like $_ }) `
                 -and (-not ($excludelinkedservices | where-object { $linkedservice.Name -like $_ })) `
-                -and (-not (test-path "linked-services/$($linkedservice.Name).json"))  
-            )       
+                -and (-not (test-path "linked-services/$($linkedservice.Name).json"))
+            )
         } | ForEach-Object {
             write-host "Deleting linked service '$($_.Name)'"
             az synapse linked-service delete --workspace-name $synapseworkspacename --name "$($linkedservice.Name)" --yes
@@ -278,11 +277,11 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
 
         }
     }
-    
+
 
     function processDatasetDeletions($synapseworkspacename, $integrationfoldername) {
         # Delete datasets already present in the folder but which are not in the latest set
-        foreach ($dataset in ( Get-AzSynapseDataset -WorkspaceName $synapseworkspacename | where-object { 
+        foreach ($dataset in ( Get-AzSynapseDataset -WorkspaceName $synapseworkspacename | where-object {
             $_.Properties.PSObject.Properties.Name -contains "Folder" -and $_.Properties.Folder.Name -eq $integrationfoldername `
             -and (-not (test-path "datasets/$integrationfoldername/$($_.Name).json"))
         })) {
@@ -295,7 +294,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
         }
     }
 
-    
+
     if ($config.ContainsKey("SynapseFolders") -and $config.SynapseFolders.Length) {
 
         write-host "##[group]Deploying Synapse assets"
@@ -305,7 +304,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
         }
 
         $synapseworkspacename = $env:SYNAPSE_WORKSPACENAME
-            
+
         if (-not (get-module Az.Synapse)) {
             import-module Az.Synapse
         }
@@ -328,7 +327,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
         foreach ($integrationfoldername in @($config.SynapseFolders)) {
 
             write-host "Processing Synapse folder '$integrationfoldername'"
-                    
+
             foreach ($datasetfile in (Get-ChildItem -Path datasets/$integrationfoldername -Filter *.json | Sort-Object BaseName)) {
                 write-host "Importing dataset $datasetfile"
 
@@ -340,12 +339,12 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
 
                 checkSuccess (New-AzSynapseDataset -WorkspaceName $synapseworkspacename -Name $datasetfile.BaseName -DefinitionFile "$($datasetfile.FullName).temp")
             }
-    
+
             foreach ($sqlfile in (Get-ChildItem -Path scripts/$integrationfoldername -Filter *.sql | Sort-Object BaseName)) {
 
                 write-host "Importing script $sqlfile"
 
-                $sql = Get-Content -encoding UTF8 -raw $sqlfile.fullname 
+                $sql = Get-Content -encoding UTF8 -raw $sqlfile.fullname
 
                 # Replace dataverse_... with the actual DB name for this environment
                 $sql = $sql -replace "\bdataverse_[a-z0-9_-]+\b", $dataversedbname
@@ -363,7 +362,7 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
 
 
             foreach ($pipelinefile in (Get-ChildItem -Path pipelines/$integrationfoldername -Filter *.json | Sort-Object BaseName)) {
-                write-host "Importing pipeline script $pipelinefile" 
+                write-host "Importing pipeline script $pipelinefile"
 
                 $pipelinejson = get-content -raw -Encoding UTF8 $pipelinefile
 
@@ -379,13 +378,13 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
             }
 
             foreach ($triggerfile in (Get-ChildItem -Path triggers/$integrationfoldername -Filter *.json | Sort-Object BaseName)) {
-                write-host "Importing trigger $triggerfile" 
+                write-host "Importing trigger $triggerfile"
                 checkSuccess (New-AzSynapseTrigger -WorkspaceName $synapseworkspacename -Name $triggerfile.BaseName -DefinitionFile $triggerfile.FullName)
             }
 
 
             # Delete pipelines already present in the folder but which are not in the latest set
-            foreach ($pipeline in ( Get-AzSynapsePipeline -WorkspaceName $synapseworkspacename | where-object { 
+            foreach ($pipeline in ( Get-AzSynapsePipeline -WorkspaceName $synapseworkspacename | where-object {
                 $_.Folder -and $_.Folder.Name -eq $integrationfoldername `
                 -and (-not (test-path "pipelines/$integrationfoldername/$($_.Name).json"))
             })) {
@@ -395,11 +394,11 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                     throw "az synapse pipeline delete failed with exit code $LASTEXITCODE"
                 }
             }
-            
+
             processDatasetDeletions -synapseworkspacename $synapseworkspacename -integrationfoldername $integrationfoldername
 
             # Delete SQL scripts already present in the folder but which are not in the latest set
-            foreach ($script in ( Get-AzSynapseSqlScript -WorkspaceName $synapseworkspacename | where-object { 
+            foreach ($script in ( Get-AzSynapseSqlScript -WorkspaceName $synapseworkspacename | where-object {
                 $_.Properties.PSObject.Properties.Name -contains "Folder" -and $_.Properties.Folder.Name -eq $integrationfoldername `
                 -and (-not (test-path "scripts/$integrationfoldername/$($_.Name).sql"))
             })) {
@@ -407,13 +406,13 @@ function synapse_deploy([Parameter(Mandatory)] $config) {
                 #Remove-AzSynapseSqlScript -WorkspaceName $synapseworkspacename -Name $script.Name -force -Verbose
 
                 write-host "Deleting SQL script '$($script.Name)'"
-                az synapse sql-script delete --workspace-name $synapseworkspacename --name "$($script.Name)" 
+                az synapse sql-script delete --workspace-name $synapseworkspacename --name "$($script.Name)"
                 if (-not $? -or $LASTEXITCODE -ne 0) {
                     throw "az synapse sql-script delete failed with exit code $LASTEXITCODE"
                 }
             }
 
-    
+
         }
 
         processLinkedServiceDeletions -synapseworkspacename $synapseworkspacename

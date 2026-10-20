@@ -6,14 +6,29 @@ The ALM framework includes a comprehensive solution validation system that runs 
 
 ## When Validation Runs
 
-Solution validation executes automatically during the **export pipeline** after solutions are exported from the source environment. Each solution configured in `alm-config.psd1` is validated before the export process completes.
+Solution validation executes automatically during the **export pipeline**. By
+default, `parallelExportSolution` starts validation alongside each solution
+export and EXPORT waits for that validation to finish before unpacking and
+comparing the solution. Each configured solution is validated before EXPORT
+completes.
 
 The validation process:
 1. Uses the existing connection to the source Dataverse environment
 2. Executes all enabled validation rules against the environment
 3. Reports any violations as pipeline errors or warnings
 
-Validation runs in the `postExportSolution` hook after each solution has been unpacked and compared. With parallel export enabled, the validation for a completed solution can run while later solutions are still exporting. The global post-export hook then reports the collected findings without repeating the checks.
+The default validation hook is `parallelExportSolution`; it receives the
+operation budget and cancellation context used by parallel exports. A configured
+`postExportSolution` hook runs later, after that solution is unpacked and
+compared. The global `postExport` hook reports collected findings without
+repeating the default checks. With sequential export, the per-solution
+validation hook runs synchronously.
+
+Validation timing is separate from deployment timing. During deployment, a
+single-solution import uses `Auto` mode and can apply its upgrade before
+`dataMigrations`; validation does not create the multi-solution staging window.
+See [deployment timing](../../docs/usage/deploying.md#deployment-sequence) when
+planning migrations that depend on components removed by an upgrade.
 
 Rules run in parallel by default, with up to four rules at once configured by `validation.maxParallel`; set `validation.parallel = $false` for sequential rules. Validation still runs for unchanged solutions and respects existing error, warning and disabled settings, including rule and component overrides.
 
@@ -320,5 +335,5 @@ If validation behavior seems unexpected, check for multiple configurations. Comp
 ## See Also
 
 - Individual validation rule documentation in `ttec-digital/validationrules/`
-- [ALM Configuration Guide](../docs/config/alm-config.md)
+- [ALM Configuration Guide](../../docs/config/alm-config.md)
 - [Solution Component Types Reference](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/solutioncomponent-entity)

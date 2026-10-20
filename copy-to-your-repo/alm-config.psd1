@@ -26,12 +26,28 @@
     # - serviceAccountUpnConfigKey: (optional) name of the environment configuration key containing
     #   the service account UPN to use when activating processes in this solution.
     #   The default is 'DataverseServiceAccountUpn'
+    # - codeApps: (optional) code app project paths relative to the repository root.
+    #   Each project is built using npm ci / npm run build. BUILD/IMPORT artifacts
+    #   contain only power.config.json and the configured buildPath output; project
+    #   metadata, dependencies, secrets, certificates and linked paths are excluded.
+    #   Runtime files are filtered by filename: .env/.env.*, .npmrc, credentials.json,
+    #   serviceAccount.json, id_rsa/id_ecdsa/id_ed25519 variants, private-key/client-secret basenames,
+    #   and .p8/.jks/.cert/.cer/.crt/.der/.pem/.key/.pfx/.p12 extensions are rejected.
+    #   Unsafe filenames found inside buildPath fail the build. By default, built files
+    #   replace the existing Code App component in this solution before import, so
+    #   the app must already be included in the solution package. This avoids the
+    #   broader Power Platform API RBAC assignment required by PAC push.
+    # - codeAppPublishMethod: (optional, default 'solution') use 'pac' to push after
+    #   import with PAC CLI. This requires a suitable Power Platform API RBAC role;
+    #   Dataverse application-user permissions alone don't grant access to that API.
     # - solutionCheck: (optional) per-solution PAC checker settings merged with global solutionCheck
     #   settings below. Use enabled = $false to skip checker for a specific solution.
     solutions = @(
         # Example:
         # @{
         #   name = 'ContosoCore'
+        #   codeApps = @('code-apps/customer-portal')
+        #   codeAppPublishMethod = 'solution' # Or 'pac' when the identity has API RBAC access
         #   mappings = @(
         #     @{
         #       type = 'FileToFile'
@@ -71,6 +87,60 @@
         # }
     )
 
+    # Organization-table columns applied before deployment.
+    # Example: @{ IsCustomControlsInCanvasAppsEnabled = $true }
+    # Column names: https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/organization
+    # Schema names are normalized to the lowercase logical names required by the Dataverse settings cmdlet.
+    # Use supported settings: https://learn.microsoft.com/en-us/power-apps/developer/data-platform/organization-table
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
+    organizationSettings = @{}
+
+    # Organization-table columns applied after the postDeploy hook.
+    # Example: @{ IsCustomControlsInCanvasAppsEnabled = $false }
+    # Schema names are normalized to the lowercase logical names required by the Dataverse settings cmdlet.
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
+    postDeployOrganizationSettings = @{}
+
+    # OrgDbOrgSettings entries applied before deployment.
+    # Example: @{ IsLockDownOfUnmanagedCustomizationEnabled = $false }
+    # Setting names and types: https://github.com/seanmcne/OrgDbOrgSettings/blob/master/mspfedyn_/OrgDbOrgSettings/Solution/WebResources/mspfedyn_/OrgDbOrgSettings/Settings.xml
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
+    orgDbOrgSettings = @{}
+
+    # OrgDbOrgSettings entries applied after the postDeploy hook.
+    # Example: @{ IsLockDownOfUnmanagedCustomizationEnabled = $true }
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
+    postDeployOrgDbOrgSettings = @{}
+
+    # Power Platform Environment Management API settings applied before deployment.
+    # Example: @{ PowerApps_AllowCodeApps = $true }
+    # No complete setting catalog is available; inspect the setting's request in the PPAC browser Network tab.
+    # Power Platform RBAC roles are currently available only at tenant scope; assign an appropriate role to the authenticated identity:
+    # AZURE_CLIENT_SECRET is used when configured; otherwise DefaultAzureCredential supports WIF, managed identity, and Azure CLI.
+    # https://learn.microsoft.com/en-us/power-platform/admin/programmability-authentication-v2
+    # https://learn.microsoft.com/en-us/power-platform/admin/programmability-tutorial-rbac-role-assignment
+    # API and setting model:
+    # https://learn.microsoft.com/en-us/rest/api/power-platform/environmentmanagement/environment-management-settings
+    # https://learn.microsoft.com/en-us/dotnet/api/microsoft.powerplatform.management.models.environmentmanagementsetting?view=power-platform-latest
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions; EnvironmentId }.
+    powerPlatformSettings = @{}
+
+    # Power Platform Environment Management API settings applied after the postDeploy hook.
+    # Example: @{ PowerApps_AllowCodeApps = $false }
+    # Uses the same API, setting-name discovery, RBAC scope, and identity options as powerPlatformSettings.
+    # Values may be static or trusted scriptblocks emitting exactly one value.
+    # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions; EnvironmentId }.
+    postDeployPowerPlatformSettings = @{}
+    # Node.js version used only when BUILD or IMPORT includes configured codeApps.
+    # A major version (for example '22') accepts an installed compatible release or installs the latest stable patch.
+    # An exact version (for example '22.14.0') pins the release.
+    # nodeVersion = '22'
+
     # BUILD SemVer settings. PATCH is the CI run number; the branch/provider
     # prerelease suffix is removed when the successful build is promoted.
     # MAJOR.MINOR also maps to solution Major.Build; solution Minor tracks upgrades.
@@ -100,6 +170,7 @@
     build = @{
         parallel = $true
         maxParallel = 2
+        versionCollisionGuard = $true
     }
 
     # Extra folders/files to include in build artifacts (copied verbatim).
@@ -188,7 +259,7 @@
     # Power Apps CLI version used by pipeline scripts.
     # Optional override. Defaults from ALM4Dataverse are used when omitted.
     # Supports: '' (latest stable), 'prerelease', or a specific version.
-    # pacCliVersion = '2.7.4'
+    # pacCliVersion = '2.13.1'
 
     # Timeout in seconds for each solution import operation (default: 10800).
     # Increase this value if solution imports time out in large or complex environments.

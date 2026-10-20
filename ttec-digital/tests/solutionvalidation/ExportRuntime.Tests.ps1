@@ -98,10 +98,10 @@ Describe 'Strict-mode export configuration' {
         $syntaxTree = [System.Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot/../../postexport.ps1", [ref]$tokens, [ref]$parseErrors)
         $loop = $syntaxTree.FindAll({ param($node) $node -is [System.Management.Automation.Language.ForEachStatementAst] -and $node.Condition.Extent.Text -eq '$config.solutions' }, $true)[0]
         Mock validateSolution { }
-        $config = @{solutions=@(@{name='TestSolution1'})}
-        $validationSettings = Get-AlmValidationSettings -Config $config
-        $validdependencysolutionnames = @()
-        $ignoresolutionnames = @()
+        Set-Variable -Name config -Value @{solutions=@(@{name='TestSolution1'})} -Scope Local
+        Set-Variable -Name validationSettings -Value (Get-AlmValidationSettings -Config $config) -Scope Local
+        Set-Variable -Name validdependencysolutionnames -Value @() -Scope Local
+        Set-Variable -Name ignoresolutionnames -Value @() -Scope Local
         foreach ($context in @(@{}, @{ParallelExportSolutionHookResults=$null}, @{ParallelExportSolutionHookResults=@{}}, @{ParallelExportSolutionHookResults=@{TestSolution1=$null}}, @{SolutionHookResults=$null}, @{SolutionHookResults=@{}}, @{SolutionHookResults=@{TestSolution1=$null}}, @{ExportValidationResults=$null}, @{ExportValidationResults=@{}}, @{ExportValidationResults=@{TestSolution1=$null}})) {
             . ([scriptblock]::Create($loop.Extent.Text))
         }
@@ -115,11 +115,11 @@ Describe 'Strict-mode export configuration' {
         $loop = $syntaxTree.FindAll({ param($node) $node -is [System.Management.Automation.Language.ForEachStatementAst] -and $node.Condition.Extent.Text -eq '$config.solutions' }, $true)[0]
         Mock validateSolution { }
         $finding = [pscustomobject]@{ Message = 'Precomputed finding'; IsWarning = $false }
-        $config = @{solutions=@(@{name='TestSolution1'})}
-        $validationSettings = Get-AlmValidationSettings -Config $config
-        $validdependencysolutionnames = @()
-        $ignoresolutionnames = @()
-        $context = @{ParallelExportSolutionHookResults=@{TestSolution1=@($finding)}}
+        Set-Variable -Name config -Value @{solutions=@(@{name='TestSolution1'})} -Scope Local
+        Set-Variable -Name validationSettings -Value (Get-AlmValidationSettings -Config $config) -Scope Local
+        Set-Variable -Name validdependencysolutionnames -Value @() -Scope Local
+        Set-Variable -Name ignoresolutionnames -Value @() -Scope Local
+        Set-Variable -Name context -Value @{ParallelExportSolutionHookResults=@{TestSolution1=@($finding)}} -Scope Local
         . ([scriptblock]::Create($loop.Extent.Text))
         Should -Invoke validateSolution -Exactly -Times 1 -ParameterFilter { $PrecomputedResults.Count -eq 1 -and $PrecomputedResults[0].Message -eq 'Precomputed finding' }
     }
@@ -448,6 +448,9 @@ Describe 'Repeated dependency validation' {
             validationMode = 'error'
             laterSolutionNames = @()
             ruleMode = 'error'
+        }
+        if ($null -eq $ruleContext) {
+            throw 'Validation rule test context was not initialized.'
         }
         Mock getComponentNames {
             [pscustomobject]@{ ComponentSchemaName = $componentId; ComponentDisplayName = $componentId }

@@ -7,7 +7,7 @@ function getBU($businessunitname, $connection) {
     } else {
         $query.Criteria.AddCondition("parentbusinessunitid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Null)
     }
-    
+
     $bu = $connection.RetrieveMultiple($query).Entities | select-object -first 1
     if (-not $bu) {
         throw "BU with name '$businessunitname' was not found"
@@ -22,7 +22,7 @@ function getRoleId($rolename, $businessunitid, $connection) {
     $query.ColumnSet.AddColumns("roleid")
     $query.Criteria.AddCondition("name", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $rolename)
     $query.Criteria.AddCondition("businessunitid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $businessunitid)
-    
+
     $role = $connection.RetrieveMultiple($query).Entities | select-object -first 1
     if (-not $role) {
         throw "Role with name '$rolename' not found"
@@ -33,8 +33,8 @@ function getRoleId($rolename, $businessunitid, $connection) {
 function ensureTeamInternal(
     [string] $businessunitname,
     [guid] $teamid,
-    [string] 
-    $teamname, 
+    [string]
+    $teamname,
     [guid] $aadgroupid,
     [string[]] $rolenames,
     [switch] $accessteam
@@ -68,7 +68,7 @@ function ensureTeamInternal(
         } else {
             $query.Criteria.AddCondition("isdefault", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $true)
             $query.Criteria.AddCondition("businessunitid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $businessunitid)
-   
+
         }
          $team = $connection.RetrieveMultiple($query).Entities | select-object -first 1
         return $team
@@ -76,7 +76,7 @@ function ensureTeamInternal(
 
     $bu = getBU -connection $connection -businessunitname $businessunitname
     $team = getExistingTeam -teamname $teamname -businessunitid $bu.Id
-   
+
     if (-not $team) {
         write-host "Creating team $teamname"
         $team = new-object Microsoft.Xrm.Sdk.Entity "team"
@@ -120,7 +120,7 @@ function ensureTeamInternal(
             $rolesidstoadd | foreach-object {
                 $rolerefstoadd.Add((new-object Microsoft.Xrm.Sdk.EntityReference "role", $_))
             }
-            
+
             $connection.Associate("team", $team.Id, $rolereln, $rolerefstoadd)
         }
 
@@ -141,7 +141,7 @@ function ensureAadGroupTeam(
     [Parameter(Mandatory)]
     [guid] $teamid,
     [Parameter(Mandatory)]
-    [string] $teamname, 
+    [string] $teamname,
     [Parameter(Mandatory)]
     [guid] $aadgroupid,
     [Parameter(Mandatory)]
@@ -152,7 +152,7 @@ function ensureAadGroupTeam(
 }
 
 function ensureBuDefaultTeam(
-    [string] $businessunitname, 
+    [string] $businessunitname,
     [Parameter(Mandatory)]
     [AllowEmptyCollection()]
     [string[]] $rolenames
@@ -165,7 +165,7 @@ function ensureOwnerTeam(
     [Parameter(Mandatory)]
     [guid] $teamid,
     [Parameter(Mandatory)]
-    [string] $teamname, 
+    [string] $teamname,
     [Parameter(Mandatory)]
     [AllowEmptyCollection()]
     [string[]] $rolenames

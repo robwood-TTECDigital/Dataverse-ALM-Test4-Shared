@@ -15,7 +15,7 @@
     Should contain almconfig.ps1 and alm-pipelines/ folder.
 
 .PARAMETER TemplateDirectory
-    Optional path to the directory containing the templates (alm-config.psd1 and pipelines/). 
+    Optional path to the directory containing the templates (alm-config.psd1 and pipelines/).
     Defaults to copy-to-your-repo in the script's directory.
 
 .PARAMETER NoAzDoConnection
@@ -106,7 +106,7 @@ function Get-AuthToken {
     $base = $module.ModuleBase
     $dllPath = $null
     $dllLoaded = $false
-    
+
     # Determine the correct path based on PowerShell edition and available folders
     if ($PSVersionTable.PSEdition -eq 'Core') {
         # PowerShell Core - try multiple .NET versions
@@ -120,7 +120,7 @@ function Get-AuthToken {
             (Join-Path $base "cmdlets\net462\Microsoft.Identity.Client.dll")
         )
     }
-    
+
     # Try each possible path
     foreach ($tryPath in $possiblePaths) {
         if (Test-Path $tryPath) {
@@ -136,13 +136,13 @@ function Get-AuthToken {
             }
         }
     }
-    
+
     # If standard paths failed, try recursive search
     if (-not $dllLoaded) {
         Write-Host "Standard paths not found, searching recursively..." -ForegroundColor DarkGray
         $allDlls = Get-ChildItem $base -Recurse -Filter "Microsoft.Identity.Client.dll" -ErrorAction SilentlyContinue
         $found = $null
-        
+
         if ($PSVersionTable.PSEdition -eq 'Core') {
             # Prefer newer .NET versions
             $found = $allDlls | Where-Object { $_.FullName -match 'net8|net7|net6|netcore|netstandard' } | Sort-Object -Property FullName -Descending | Select-Object -First 1
@@ -150,7 +150,7 @@ function Get-AuthToken {
         else {
             $found = $allDlls | Where-Object { $_.FullName -match 'net4' } | Sort-Object -Property FullName -Descending | Select-Object -First 1
         }
-        
+
         if ($found) {
             $dllPath = $found.FullName
             try {
@@ -163,7 +163,7 @@ function Get-AuthToken {
             }
         }
     }
-    
+
     # If still not loaded, try LoadWithPartialName as last resort
     if (-not $dllLoaded) {
         Write-Host "Attempting to load via LoadWithPartialName..." -ForegroundColor DarkGray
@@ -175,7 +175,7 @@ function Get-AuthToken {
             Write-Host "LoadWithPartialName failed: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
-    
+
     # Verify that the type is actually available
     if (-not $dllLoaded) {
         try {
@@ -201,10 +201,10 @@ function Get-AuthToken {
     Write-Host "Starting interactive authentication..." -ForegroundColor Yellow
     Write-Host "A browser window should open. If it doesn't, press Ctrl+C to cancel." -ForegroundColor Gray
     Write-Host ""
-    
+
     $job = Start-Job -ScriptBlock {
         param($ClientId, $Authority, $Scopes, $DllPath)
-        
+
         # Load MSAL in the job
         if ($DllPath -and (Test-Path $DllPath)) {
             try {
@@ -223,7 +223,7 @@ function Get-AuthToken {
                 throw "MSAL DLL path not provided and LoadWithPartialName failed: $_"
             }
         }
-        
+
         # Verify the type is available
         try {
             $app = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($ClientId)
@@ -231,17 +231,17 @@ function Get-AuthToken {
         catch {
             throw "Microsoft.Identity.Client.PublicClientApplicationBuilder type not available after loading DLL: $_"
         }
-        
+
         try {
             $app = $app.WithAuthority($Authority)
             $app = $app.WithRedirectUri("http://localhost")
             $pca = $app.Build()
-            
+
             # Convert scopes to proper format
             if ($Scopes -is [string]) {
                 $Scopes = @($Scopes)
             }
-            
+
             $result = $pca.AcquireTokenInteractive([string[]]$Scopes).ExecuteAsync().GetAwaiter().GetResult()
             return $result
         }
@@ -249,47 +249,66 @@ function Get-AuthToken {
             throw "Authentication failed: $_"
         }
     } -ArgumentList $ClientId, $authority, $scopes, $dllPath
-    
+
     # Wait for the job with user-cancellable loop
     $timeout = 120 # 2 minutes in seconds
     $elapsed = 0
     $checkInterval = 1 # Check every second
     $userCancelled = $false
-    
+
     Write-Host "Waiting for authentication (timeout: $timeout seconds)..." -ForegroundColor Yellow
     Write-Host "Type 'cancel' and press Enter to skip browser auth and use PAT instead" -ForegroundColor Cyan
     Write-Host ""
-    
+
     try {
         while ($job.State -eq 'Running' -and $elapsed -lt $timeout) {
-            # Use timeout on Read-Host to allow user to type 'cancel'
             if ($elapsed % 5 -eq 0) {
-                # Every 5 seconds, show a prompt they can respond to
-                $userInput = Read-Host -Prompt "Still waiting (type 'cancel' to skip, or press Enter to continue)" -TimeoutSec 5
-                if ($userInput -eq 'cancel') {
-                    Write-Host ""
-                    Write-Host "Browser authentication skipped. Will use PAT instead." -ForegroundColor Yellow
-                    $userCancelled = $true
+                Write-Host "Still waiting (type 'cancel' and press Enter to skip, or wait to continue)" -ForegroundColor Cyan
+                $inputBuffer = ''
+                for ($promptSecond = 0; $promptSecond -lt 5 -and $job.State -eq 'Running'; $promptSecond++) {
+                    if (-not [Console]::IsInputRedirected) {
+                        while ([Console]::KeyAvailable) {
+                            $key = [Console]::ReadKey($true)
+                            if ($key.Key -eq [ConsoleKey]::Enter) {
+                                if ($inputBuffer -eq 'cancel') {
+                                    Write-Host ""
+                                    Write-Host "Browser authentication skipped. Will use PAT instead." -ForegroundColor Yellow
+                                    $userCancelled = $true
+                                }
+                                $inputBuffer = ''
+                                break
+                            }
+                            if (-not [char]::IsControl($key.KeyChar)) {
+                                $inputBuffer += $key.KeyChar
+                            }
+                        }
+                    }
+                    if ($userCancelled) {
+                        break
+                    }
+                    Start-Sleep -Seconds 1
+                }
+                if ($userCancelled) {
                     break
                 }
             }
             else {
                 Start-Sleep -Seconds 1
             }
-            
+
             $elapsed += $checkInterval
         }
-        
+
         if ($userCancelled) {
             Stop-Job -Job $job -ErrorAction SilentlyContinue
             Remove-Job -Job $job -ErrorAction SilentlyContinue
             return $null
         }
-        
+
         if ($job.State -eq 'Completed') {
             $result = Receive-Job -Job $job
             Remove-Job -Job $job
-            
+
             if ($result -and $result.AccessToken) {
                 Write-Host "  ✓ Authentication successful" -ForegroundColor Green
                 return $result
@@ -331,7 +350,7 @@ function Get-AuthToken {
 $WorkspacePath = Resolve-Path $WorkspacePath -ErrorAction Stop
 
 if (-not $TemplateDirectory) {
-    $TemplateDirectory = Join-Path $scriptRoot '..' 'copy-to-your-repo'
+    $TemplateDirectory = Join-Path -Path $scriptRoot -ChildPath '../copy-to-your-repo'
 }
 
 # Determine almconfig.ps1 path
@@ -407,15 +426,15 @@ Write-Host "Detecting Azure DevOps configuration from git origin remote..." -For
 Push-Location $WorkspacePath
 try {
     $gitRemote = & git remote get-url origin 2>$null
-    
+
     if ($gitRemote) {
         Write-Host "  Git origin: $gitRemote" -ForegroundColor Gray
-        
+
         # Parse Azure DevOps URL patterns:
         # https://dev.azure.com/{organization}/{project}/_git/{repository}
         # https://{organization}.visualstudio.com/{project}/_git/{repository}
         # {organization}@vs-ssh.visualstudio.com:v3/{organization}/{project}/{repository}
-        
+
         if ($gitRemote -match 'dev\.azure\.com[/:]([^/]+)/([^/]+)/_git/([^/\s]+?)(?:\.git)?$') {
             if (-not $AzDoOrganization) { $AzDoOrganization = $matches[1] }
             if (-not $AzDoProject) { $AzDoProject = $matches[2] }
@@ -431,7 +450,7 @@ try {
             if (-not $AzDoProject) { $AzDoProject = $matches[2] }
             if (-not $AzDoRepository) { $AzDoRepository = $matches[3] }
         }
-        
+
         if ($AzDoRepository) {
             Write-Host "  ✓ Detected Azure DevOps configuration:" -ForegroundColor Green
             Write-Host "    Organization: $AzDoOrganization" -ForegroundColor Gray
@@ -464,109 +483,109 @@ if ($OldPipelinesPath) {
     Write-Host "==================================================================" -ForegroundColor Cyan
     Write-Host "Migrating Pipeline Files" -ForegroundColor Cyan
     Write-Host "==================================================================" -ForegroundColor Cyan
-    
+
     # Create new pipelines directory if it doesn't exist
     if (-not (Test-Path $NewPipelinesPath)) {
         Write-Host "Creating pipelines directory..." -ForegroundColor Yellow
         New-Item -Path $NewPipelinesPath -ItemType Directory -Force | Out-Null
     }
-    
+
     # Template pipeline paths
     $templatePipelinesPath = Join-Path $TemplateDirectory 'pipelines'
-    
+
     # Migrate BUILD.yml
     $oldBuildPath = Join-Path $OldPipelinesPath 'build.yml'
     $newBuildPath = Join-Path $NewPipelinesPath 'BUILD.yml'
-    
+
     if (Test-Path $oldBuildPath) {
         Write-Host "Migrating build.yml to BUILD.yml..." -ForegroundColor Yellow
         $templateBuild = Join-Path $templatePipelinesPath 'BUILD.yml'
-        
+
         if (Test-Path $templateBuild) {
             Copy-Item -Path $templateBuild -Destination $newBuildPath -Force
-            
+
             # Replace repository name in the copied file
             $buildContent = Get-Content -Path $newBuildPath -Raw
             $buildContent = $buildContent -replace '(\s+)name: ALM4Dataverse', '$1name: Dataverse-ALM'
             $buildContent | Out-File -FilePath $newBuildPath -Encoding UTF8 -NoNewline
-            
+
             Write-Host "  Created BUILD.yml from template" -ForegroundColor Green
         }
         else {
             throw "Template BUILD.yml not found at $templateBuild"
         }
     }
-    
+
     # Migrate EXPORT.yml
     $oldExportPath = Join-Path $OldPipelinesPath 'export.yml'
     $newExportPath = Join-Path $NewPipelinesPath 'EXPORT.yml'
-    
+
     if (Test-Path $oldExportPath) {
         Write-Host "Migrating export.yml to EXPORT.yml..." -ForegroundColor Yellow
         $templateExport = Join-Path $templatePipelinesPath 'EXPORT.yml'
-        
+
         if (Test-Path $templateExport) {
             Copy-Item -Path $templateExport -Destination $newExportPath -Force
-            
+
             # Replace repository name in the copied file
             $exportContent = Get-Content -Path $newExportPath -Raw
             $exportContent = $exportContent -replace '(\s+)name: ALM4Dataverse', '$1name: Dataverse-ALM'
             $exportContent | Out-File -FilePath $newExportPath -Encoding UTF8 -NoNewline
-            
+
             Write-Host "  Created EXPORT.yml from template" -ForegroundColor Green
         }
         else {
             throw "Template EXPORT.yml not found at $templateExport"
         }
     }
-    
+
     # Migrate IMPORT.yml
     $oldImportPath = Join-Path $OldPipelinesPath 'import.yml'
     $newImportPath = Join-Path $NewPipelinesPath 'IMPORT.yml'
-    
+
     if (Test-Path $oldImportPath) {
         Write-Host "Migrating import.yml to IMPORT.yml..." -ForegroundColor Yellow
         $templateImport = Join-Path $templatePipelinesPath 'IMPORT.yml'
-        
+
         if (Test-Path $templateImport) {
             Copy-Item -Path $templateImport -Destination $newImportPath -Force
-            
+
             # Replace repository name in the copied file
             $importContent = Get-Content -Path $newImportPath -Raw
             $importContent = $importContent -replace '(\s+)name: ALM4Dataverse', '$1name: Dataverse-ALM'
             $importContent | Out-File -FilePath $newImportPath -Encoding UTF8 -NoNewline
-            
+
             Write-Host "  Created IMPORT.yml from template" -ForegroundColor Green
         }
         else {
             throw "Template IMPORT.yml not found at $templateImport"
         }
     }
-    
+
     # Migrate DEPLOY.yml with environment stages
     $oldDeployPath = Join-Path $OldPipelinesPath 'deploy.yml'
-    
+
     if (Test-Path $oldDeployPath) {
         Write-Host "Migrating deploy.yml to DEPLOY-main.yml..." -ForegroundColor Yellow
-        
+
         # Parse the old deploy.yml to extract environment stages
         $envStages = @()
         $lines = Get-Content -Path $oldDeployPath
-        
+
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $line = $lines[$i]
-            
+
             if ($line -match '^\s*-\s*template:\s*stage-templates/deploy-env\.yml@') {
                 # Found a deploy-env stage, extract parameters
                 $envName = $null
                 $serviceConnection = $null
                 $retentionDays = $null
-                
+
                 # Look ahead for parameters
                 $j = $i + 1
                 while ($j -lt $lines.Count -and $lines[$j] -match '^\s+(parameters:|environment:|dataverseserviceconnectionname:|buildRetentionDaysOnSuccess:)') {
                     $paramLine = $lines[$j]
-                    
+
                     if ($paramLine -match 'environment:\s*[\''"]([^\''"]*)[\''"]|environment:\s*([^\s]+)') {
                         $envName = if ($matches[1]) { $matches[1].Trim() } else { $matches[2].Trim() }
                     }
@@ -576,10 +595,10 @@ if ($OldPipelinesPath) {
                     elseif ($paramLine -match 'buildRetentionDaysOnSuccess:\s*(\d+)') {
                         $retentionDays = $matches[1]
                     }
-                    
+
                     $j++
                 }
-                
+
                 if ($envName) {
                     $envStages += @{
                         EnvironmentName   = $envName
@@ -589,60 +608,60 @@ if ($OldPipelinesPath) {
                 }
             }
         }
-        
+
         # Load template and customize
         $templateDeploy = Join-Path $templatePipelinesPath 'DEPLOY-main.yml'
-        
+
         if (Test-Path $templateDeploy) {
             $deployContent = Get-Content -Path $templateDeploy -Raw
-            
+
             # Build the stages section
             $stagesSection = New-Object System.Text.StringBuilder
-            
+
             if ($envStages.Count -gt 0) {
                 [void]$stagesSection.AppendLine()
                 [void]$stagesSection.AppendLine('  # Migrated environment stages from legacy deploy.yml')
-                
+
                 foreach ($stage in $envStages) {
                     [void]$stagesSection.AppendLine()
                     [void]$stagesSection.AppendLine('  - template: pipelines/templates/stages/deploy-environment.yml@ALM4Dataverse')
                     [void]$stagesSection.AppendLine('    parameters:')
                     [void]$stagesSection.AppendLine("      environmentName: '$($stage.EnvironmentName)'")
-                    
+
                     if ($stage.ServiceConnection) {
                         [void]$stagesSection.AppendLine("      # NOTE: The new format uses convention-based naming.")
                         [void]$stagesSection.AppendLine("      # - Environment: $($stage.EnvironmentName)")
                         [void]$stagesSection.AppendLine("      # - Variable Group: Environment-$($stage.EnvironmentName)")
                         [void]$stagesSection.AppendLine("      # - Service Connection: $($stage.EnvironmentName)")
                     }
-                    
+
                     if ($stage.RetentionDays) {
                         [void]$stagesSection.AppendLine("      # Legacy buildRetentionDaysOnSuccess: $($stage.RetentionDays)")
                         [void]$stagesSection.AppendLine("      # NOTE: Build retention is not currently supported in the new format")
                     }
                 }
             }
-            
+
             # Replace the example stage with actual stages
             # Pattern matches from "stages:" through the commented example lines
             $deployContent = $deployContent -replace '(?s)(stages:).*?(#\s*-\s*template:.*?environmentName:.*?)$', "`$1$($stagesSection.ToString())"
-            
+
             # Update the pipeline trigger source to include the repository folder
             $newSource = "\$AzDoRepository\BUILD"
             $deployContent = $deployContent -replace "source:\s*'BUILD'", "source: '$newSource'"
-            
+
             # Replace repository name (but not the repository identifier)
             $deployContent = $deployContent -replace '(\s+)name: ALM4Dataverse', '$1name: Dataverse-ALM'
-            
+
             $newDeployPath = Join-Path $NewPipelinesPath 'DEPLOY-main.yml'
             $deployContent | Out-File -FilePath $newDeployPath -Encoding UTF8
-            
+
             Write-Host "  Created DEPLOY-main.yml with $($envStages.Count) environment stage(s)" -ForegroundColor Green
         }
         else {
             throw "Template DEPLOY-main.yml not found at $templateDeploy"
         }
-        
+
         if ($envStages.Count -gt 0) {
             Write-Host ""
             Write-Host "  Migrated environments:" -ForegroundColor Cyan
@@ -652,48 +671,48 @@ if ($OldPipelinesPath) {
                     Write-Host "    Service connection '$($stage.ServiceConnection)' needs to be renamed to '$($stage.EnvironmentName)'"
                 }
             }
-            
+
             # Save to script-level variable for use in service connection renaming
             $script:migratedEnvironments = $envStages
         }
     }
-    
+
     # Rename old pipelines directory
     $migratedPipelinesPath = "$OldPipelinesPath.migrated"
     Write-Host ""
     Write-Host "Renaming alm-pipelines to: $migratedPipelinesPath" -ForegroundColor Yellow
-    Rename-Item -Path $OldPipelinesPath -NewName "$OldPipelinesPath.migrated" -Force
+    Rename-Item -LiteralPath $OldPipelinesPath -NewName ("{0}.migrated" -f ([IO.Path]::GetFileName($OldPipelinesPath))) -Force
 }
 else {
     Write-Host ""
     Write-Host "Pipeline file migration skipped (already completed or not found)" -ForegroundColor Green
-    
+
     # Parse environment stages from the already migrated deploy.yml
     # This is needed for service connection and variable group migration
     if (Test-Path $OldPipelinesMigratedPath) {
         Write-Host "Parsing environment stages from migrated pipelines..." -ForegroundColor Yellow
-        
+
         $oldDeployPath = Join-Path $OldPipelinesMigratedPath 'deploy.yml'
-        
+
         if (Test-Path $oldDeployPath) {
             # Parse the old deploy.yml to extract environment stages
             $envStages = @()
             $lines = Get-Content -Path $oldDeployPath
-            
+
             for ($i = 0; $i -lt $lines.Count; $i++) {
                 $line = $lines[$i]
-                
+
                 if ($line -match '^\s*-\s*template:\s*stage-templates/deploy-env\.yml@') {
                     # Found a deploy-env stage, extract parameters
                     $envName = $null
                     $serviceConnection = $null
                     $retentionDays = $null
-                    
+
                     # Look ahead for parameters
                     $j = $i + 1
                     while ($j -lt $lines.Count -and $lines[$j] -match '^\s+(parameters:|environment:|dataverseserviceconnectionname:|buildRetentionDaysOnSuccess:)') {
                         $paramLine = $lines[$j]
-                        
+
                         if ($paramLine -match 'environment:\s*[\''"]([^\''"]*)[\''"]|environment:\s*([^\s]+)') {
                             $envName = if ($matches[1]) { $matches[1].Trim() } else { $matches[2].Trim() }
                         }
@@ -703,10 +722,10 @@ else {
                         elseif ($paramLine -match 'buildRetentionDaysOnSuccess:\s*(\d+)') {
                             $retentionDays = $matches[1]
                         }
-                        
+
                         $j++
                     }
-                    
+
                     if ($envName) {
                         $envStages += @{
                             EnvironmentName   = $envName
@@ -716,13 +735,13 @@ else {
                     }
                 }
             }
-            
+
             if ($envStages.Count -gt 0) {
                 Write-Host "  Found $($envStages.Count) environment stage(s):" -ForegroundColor Green
                 foreach ($stage in $envStages) {
                     Write-Host "    - $($stage.EnvironmentName)" -ForegroundColor Gray
                 }
-                
+
                 # Save to script-level variable for use in service connection renaming
                 $script:migratedEnvironments = $envStages
             }
@@ -753,29 +772,29 @@ if ($shouldMigrateAzDo) {
     Write-Host "==================================================================" -ForegroundColor Cyan
     Write-Host "Migrating Azure DevOps Pipeline Definitions" -ForegroundColor Cyan
     Write-Host "==================================================================" -ForegroundColor Cyan
-    
+
     # Install and import VSTeam module
     Write-Host "Checking for VSTeam PowerShell module..." -ForegroundColor Yellow
-    
+
     $vsTeamModule = Get-Module -Name VSTeam -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
-    
+
     if (-not $vsTeamModule) {
         Write-Host "  Installing VSTeam module..." -ForegroundColor Yellow
         Install-Module -Name VSTeam -Scope CurrentUser -Force -AllowClobber
         $vsTeamModule = Get-Module -Name VSTeam -ListAvailable | Select-Object -First 1
     }
-    
+
     Write-Host "  Importing VSTeam module version $($vsTeamModule.Version)..." -ForegroundColor Yellow
     Import-Module -Name VSTeam -RequiredVersion $vsTeamModule.Version -Force
-    
+
     # Authenticate to Azure DevOps
     Write-Host "Authenticating to Azure DevOps..." -ForegroundColor Yellow
     Write-Host "  Organization: $AzDoOrganization" -ForegroundColor Gray
     Write-Host "  Project: $AzDoProject" -ForegroundColor Gray
     Write-Host ""
-    
+
     $authSuccess = $false
-    
+
     # Try using provided PAT first
     if ($PersonalAccessToken) {
         Write-Host "Using provided Personal Access Token..." -ForegroundColor Yellow
@@ -789,7 +808,7 @@ if ($shouldMigrateAzDo) {
             throw "Failed to authenticate with provided PAT: $($_.Exception.Message)"
         }
     }
-    
+
     # Try browser-based authentication if no PAT or PAT failed
     if (-not $authSuccess) {
         Write-Host "Attempting browser-based authentication..." -ForegroundColor Yellow
@@ -800,22 +819,22 @@ if ($shouldMigrateAzDo) {
         Write-Host "      2. Type 'skip' below to skip browser auth and enter a PAT directly" -ForegroundColor Cyan
         Write-Host ""
         $response = Read-Host "Press Enter to try browser auth, or type 'skip' to enter a PAT"
-        
+
         if ($response -eq 'skip') {
             Write-Host "Skipping browser authentication" -ForegroundColor Yellow
         }
         else {
             # Azure DevOps resource for AAD token acquisition
             $adoResourceUrl = '499b84ac-1321-427f-aa17-267ca6975798'
-            
+
             try {
                 Write-Host ""
                 Write-Host "Opening browser for authentication..." -ForegroundColor Yellow
                 Write-Host "If no browser opens, or you prefer to skip this, type 'cancel' at the prompt" -ForegroundColor Gray
                 Write-Host ""
-                
+
                 $adoAuthResult = Get-AuthToken -ResourceUrl $adoResourceUrl
-                
+
                 if ($adoAuthResult -and $adoAuthResult.AccessToken) {
                     $secureToken = ConvertTo-SecureString -String $adoAuthResult.AccessToken -AsPlainText -Force
                     Set-VSTeamAccount -Account $AzDoOrganization -SecurePersonalAccessToken $secureToken -UseBearerToken -Force
@@ -840,7 +859,7 @@ if ($shouldMigrateAzDo) {
             }
         }
     }
-    
+
     # If both methods failed, prompt for PAT
     if (-not $authSuccess) {
         Write-Host ""
@@ -848,12 +867,12 @@ if ($shouldMigrateAzDo) {
         Write-Host "You can create a PAT at: https://dev.azure.com/$AzDoOrganization/_usersSettings/tokens" -ForegroundColor Cyan
         Write-Host "Required scopes: Build (Read & Execute), Code (Read), Variable Groups (Read & Manage)" -ForegroundColor Cyan
         Write-Host ""
-        
+
         $pat = Read-Host "Enter your Personal Access Token (PAT)" -AsSecureString
         $patPlainText = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
             [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($pat)
         )
-        
+
         try {
             $secureToken = ConvertTo-SecureString -String $patPlainText -AsPlainText -Force
             Set-VSTeamAccount -Account $AzDoOrganization -SecurePersonalAccessToken $secureToken -Force
@@ -866,14 +885,14 @@ if ($shouldMigrateAzDo) {
             throw
         }
     }
-    
+
     # Set the default project
     Set-VSTeamDefaultProject -Project $AzDoProject
-    
+
     # Get all pipelines in the project
     Write-Host "Retrieving pipeline definitions..." -ForegroundColor Yellow
     $allPipelines = Get-VSTeamBuildDefinition -ProjectName $AzDoProject
-    
+
     # Define the migration mapping
     $pathMappings = @{
         'alm-pipelines/build.yml'  = 'pipelines/BUILD.yml'
@@ -881,51 +900,51 @@ if ($shouldMigrateAzDo) {
         'alm-pipelines/import.yml' = 'pipelines/IMPORT.yml'
         'alm-pipelines/deploy.yml' = 'pipelines/DEPLOY-main.yml'
     }
-    
+
     $updatedPipelines = @()
-    
+
     foreach ($pipeline in $allPipelines) {
         # Get full pipeline definition
         $fullPipeline = Get-VSTeamBuildDefinition -ProjectName $AzDoProject -Id $pipeline.id
-        
+
         # Check if this pipeline uses YAML and points to our repository
         if ($fullPipeline.process -and $fullPipeline.process.type -eq 2) {
             $yamlPath = $fullPipeline.process.yamlFilename
             $repoName = $fullPipeline.repository.name
-            
+
             # Only process if it's our target repository
             if ($repoName -eq $AzDoRepository) {
                 # Check if the YAML path needs migration
                 $normalizedPath = $yamlPath -replace '\\', '/'
-                
+
                 if ($pathMappings.ContainsKey($normalizedPath.TrimStart('/'))) {
                     $newPath = $pathMappings[$normalizedPath.TrimStart('/')]
-                    
+
                     Write-Host ""
                     Write-Host "Found pipeline to migrate:" -ForegroundColor Cyan
                     Write-Host "  Pipeline: $($pipeline.name)" -ForegroundColor White
                     Write-Host "  Old path: $yamlPath" -ForegroundColor Yellow
                     Write-Host "  New path: $newPath" -ForegroundColor Green
-                    
+
                     # Calculate the new folder path based on repository name
                     $oldFolder = $fullPipeline.path
                     $newFolder = "\$AzDoRepository"
-                    
+
                     # Update the pipeline
                     $fullPipeline.process.yamlFilename = $newPath
                     $fullPipeline.path = $newFolder
-                    
+
                     Write-Host "  Old folder: $oldFolder" -ForegroundColor Yellow
                     Write-Host "  New folder: $newFolder" -ForegroundColor Green
-                    
+
                     # Use Invoke-VSTeamRequest to update the pipeline
                     $resource = "build/definitions/$($pipeline.id)"
                     $body = $fullPipeline | ConvertTo-Json -Depth 50
-                    
+
                     try {
                         [void](Invoke-VSTeamRequest -Method PUT -Resource $resource -Body $body -ContentType 'application/json' -Version '7.1')
                         Write-Host "  ✓ Updated successfully" -ForegroundColor Green
-                        
+
                         $updatedPipelines += @{
                             Name      = $pipeline.name
                             OldPath   = $yamlPath
@@ -941,7 +960,7 @@ if ($shouldMigrateAzDo) {
             }
         }
     }
-    
+
     if ($updatedPipelines.Count -eq 0) {
         Write-Host ""
         Write-Host "No pipelines found that need migration." -ForegroundColor Yellow
@@ -958,38 +977,38 @@ if ($shouldMigrateAzDo) {
             Write-Host "    Folder: $($p.OldFolder) → $($p.NewFolder)" -ForegroundColor Gray
         }
     }
-    
+
     #==============================================================================
     # Migrate Service Connections and Variable Groups
     #==============================================================================
-    
+
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor Cyan
     Write-Host "Migrating Service Connections and Variable Groups" -ForegroundColor Cyan
     Write-Host "==================================================================" -ForegroundColor Cyan
-    
+
     # Get all variable groups
     Write-Host "Retrieving variable groups..." -ForegroundColor Yellow
-    
+
     if ($script:migratedEnvironments.Count -eq 0) {
         Write-Host "  No environments were migrated, skipping variable group check" -ForegroundColor Gray
     }
     else {
         try {
             $variableGroups = Invoke-VSTeamRequest -Resource "distributedtask/variablegroups" -Version '7.1-preview.2' -ProjectName $AzDoProject
-            
+
             $renamedVarGroups = @()
-            
+
             # Build a map of environment names to their service connections from variable groups
             $script:environmentServiceConnections = @{}
-            
+
             foreach ($env in $script:migratedEnvironments) {
                 $targetEnvName = $env.EnvironmentName
                 $expectedNewName = "Environment-$targetEnvName"
-                
+
                 # First check if variable group already has the correct name
                 $vgTarget = $variableGroups.value | Where-Object { $_.name -eq $expectedNewName }
-                
+
                 if ($vgTarget) {
                     Write-Host "  ✓ Variable group '$expectedNewName' already has correct name (migration already completed)" -ForegroundColor Green
                     # Still extract service connection name if available
@@ -1000,15 +1019,15 @@ if ($shouldMigrateAzDo) {
                     }
                     continue
                 }
-                
+
                 # Try to find the variable group for this environment
                 # It might be named after the environment or already follow the new convention
-                $vg = $variableGroups.value | Where-Object { 
-                    $_.name -eq $targetEnvName -or 
+                $vg = $variableGroups.value | Where-Object {
+                    $_.name -eq $targetEnvName -or
                     $_.name -eq "Environment $targetEnvName" -or
                     $_.name -like "*$targetEnvName*"
                 } | Select-Object -First 1
-                
+
                 if (-not $vg) {
                     # Check if it might have already been migrated to the target name
                     if ($vgTarget) {
@@ -1019,47 +1038,47 @@ if ($shouldMigrateAzDo) {
                     }
                     continue
                 }
-                
+
                 $oldName = $vg.name
-                
+
                 # Extract service connection name from the variable group
                 if ($vg.variables -and $vg.variables.PSObject.Properties['DataverseServiceConnectionName']) {
                     $serviceConnectionName = $vg.variables.DataverseServiceConnectionName.value
                     $script:environmentServiceConnections[$targetEnvName] = $serviceConnectionName
                     Write-Host "  Found service connection '$serviceConnectionName' for environment '$targetEnvName'" -ForegroundColor Gray
                 }
-                
+
                 Write-Host ""
                 Write-Host "Renaming variable group:" -ForegroundColor Cyan
                 Write-Host "  Old name: $oldName" -ForegroundColor Yellow
                 Write-Host "  New name: $expectedNewName" -ForegroundColor Green
                 Write-Host "  Environment: $targetEnvName" -ForegroundColor Gray
-                
+
                 try {
                     # Get the full variable group details with project references
                     $vgFull = Invoke-VSTeamRequest -Resource "distributedtask/variablegroups/$($vg.id)" -Version '7.1-preview.2' -ProjectName $AzDoProject
-                    
+
                     # Update the name in the full object
                     $vgFull.name = $expectedNewName
-                    
+
                     # Update the project reference names to match
                     if ($vgFull.variableGroupProjectReferences -and $vgFull.variableGroupProjectReferences.Count -gt 0) {
                         foreach ($ref in $vgFull.variableGroupProjectReferences) {
                             $ref.name = $expectedNewName
                         }
                     }
-                    
+
                     # Add note variable for deprecated DataverseServiceConnectionName
                     if (-not $vgFull.variables) {
                         $vgFull.variables = @{}
                     }
                     $vgFull.variables | Add-Member -MemberType NoteProperty -Name 'DataverseServiceConnectionName_NOTE' -Value @{ value = 'No longer used - kept for reference' } -Force
-                    
+
                     $body = $vgFull | ConvertTo-Json -Depth 50 -Compress
-                    
+
                     [void](Invoke-VSTeamRequest -Method PUT -Resource "distributedtask/variablegroups/$($vg.id)" -Body $body -ContentType 'application/json' -Version '7.1-preview.2' -ProjectName $AzDoProject)
                     Write-Host "  ✓ Renamed successfully" -ForegroundColor Green
-                    
+
                     $renamedVarGroups += @{
                         OldName     = $oldName
                         NewName     = $expectedNewName
@@ -1070,7 +1089,7 @@ if ($shouldMigrateAzDo) {
                     throw "Failed to rename variable group '$oldName' to '$expectedNewName': $($_.Exception.Message)"
                 }
             }
-            
+
             if ($renamedVarGroups.Count -gt 0) {
                 Write-Host ""
                 Write-Host "Successfully renamed $($renamedVarGroups.Count) variable group(s)" -ForegroundColor Green
@@ -1084,22 +1103,22 @@ if ($shouldMigrateAzDo) {
             throw "Failed to retrieve or update variable groups: $($_.Exception.Message)"
         }
     }
-    
+
     # Get all service connections and rename based on migrated environments
     Write-Host ""
     Write-Host "Checking service connections..." -ForegroundColor Yellow
-    
+
     if ($script:migratedEnvironments.Count -eq 0) {
         Write-Host "  No environments were migrated, skipping service connection check" -ForegroundColor Gray
     }
     else {
         $serviceConnections = Invoke-VSTeamRequest -Resource "serviceendpoint/endpoints" -Version '7.1-preview.4' -ProjectName $AzDoProject
-            
+
         $renamedConnections = @()
-            
+
         foreach ($env in $script:migratedEnvironments) {
             $targetEnvName = $env.EnvironmentName
-                
+
             # Try to get service connection name from variable group first
             $oldServiceConnectionName = $null
             if ($script:environmentServiceConnections -and $script:environmentServiceConnections.ContainsKey($targetEnvName)) {
@@ -1111,23 +1130,23 @@ if ($shouldMigrateAzDo) {
                 $oldServiceConnectionName = $env.ServiceConnection
                 Write-Host "  Using service connection '$oldServiceConnectionName' from deploy.yml for environment '$targetEnvName'" -ForegroundColor Gray
             }
-                
+
             if (-not $oldServiceConnectionName) {
                 Write-Warning "No service connection name found for environment '$targetEnvName'"
                 continue
             }
-                
+
             # First check if service connection already has the correct name (target name)
             $scTarget = $serviceConnections.value | Where-Object { $_.name -eq $targetEnvName }
-            
+
             if ($scTarget) {
                 Write-Host "  ✓ Service connection '$targetEnvName' already has correct name (migration already completed)" -ForegroundColor Green
                 continue
             }
-            
+
             # Find the service connection by old name
             $sc = $serviceConnections.value | Where-Object { $_.name -eq $oldServiceConnectionName }
-            
+
             if (-not $sc) {
                 # Check if the target name exists (migration may have been done manually)
                 if ($scTarget) {
@@ -1139,33 +1158,33 @@ if ($shouldMigrateAzDo) {
                     continue
                 }
             }
-                
+
             Write-Host ""
             Write-Host "Renaming service connection:" -ForegroundColor Cyan
             Write-Host "  Old name: $oldServiceConnectionName" -ForegroundColor Yellow
             Write-Host "  New name: $targetEnvName" -ForegroundColor Green
             Write-Host "  Environment: $targetEnvName" -ForegroundColor Gray
-                
+
             try {
                 # Get the full service connection details
                 $scFull = Invoke-VSTeamRequest -Resource "serviceendpoint/endpoints/$($sc.id)" -Version '7.1-preview.4' -ProjectName $AzDoProject
-                    
+
                 # Update BOTH the top-level name and the project reference name
                 # Both need to match for the API to accept it
                 $scFull.name = $targetEnvName
-                    
+
                 if ($scFull.serviceEndpointProjectReferences -and $scFull.serviceEndpointProjectReferences.Count -gt 0) {
                     foreach ($ref in $scFull.serviceEndpointProjectReferences) {
                         $ref.name = $targetEnvName
                     }
                 }
-                    
+
                 $bodyJson = $scFull | ConvertTo-Json -Depth 50 -Compress
-                    
+
                 # Use PUT to update the service connection
                 [void](Invoke-VSTeamRequest -Method PUT -Resource "serviceendpoint/endpoints/$($sc.id)" -Body $bodyJson -ContentType 'application/json' -Version '7.1-preview.4' -ProjectName $AzDoProject)
                 Write-Host "  ✓ Renamed successfully" -ForegroundColor Green
-                    
+
                 $renamedConnections += @{
                     OldName     = $oldServiceConnectionName
                     NewName     = $targetEnvName
@@ -1176,7 +1195,7 @@ if ($shouldMigrateAzDo) {
                 throw "Failed to rename service connection '$oldServiceConnectionName' to '$targetEnvName': $($_.Exception.Message)"
             }
         }
-            
+
         if ($renamedConnections.Count -gt 0) {
             Write-Host ""
             Write-Host "Successfully renamed $($renamedConnections.Count) service connection(s)" -ForegroundColor Green
@@ -1184,115 +1203,115 @@ if ($shouldMigrateAzDo) {
         elseif ($script:migratedEnvironments.Count -gt 0) {
             Write-Host "  ✓ All service connections are correctly named" -ForegroundColor Green
         }
-       
+
     }
-    
+
     #==============================================================================
     # Handle DEV - main variable group and its service connection
     #==============================================================================
-    
+
     Write-Host ""
     Write-Host "Checking for 'DEV - main' variable group..." -ForegroundColor Yellow
-    
+
     try {
         $variableGroups = Invoke-VSTeamRequest -Resource "distributedtask/variablegroups" -Version '7.1-preview.2' -ProjectName $AzDoProject
 
         # Check if Environment-DEV-main already exists
         $buildVgTarget = $variableGroups.value | Where-Object { $_.name -eq 'Environment-DEV-main' }
-        
+
         if ($buildVgTarget) {
             Write-Host "  Variable group 'Environment-DEV-main' already exists with correct name" -ForegroundColor Gray
         }
         else {
             # Look for "DEV - main" variable group
             $devMainVg = $variableGroups.value | Where-Object { $_.name -eq 'DEV - main' }
-            
+
             if ($devMainVg) {
                 $oldName = 'DEV - main'
                 $newName = 'Environment-DEV-main'
-                
+
                 # Extract service connection name from the variable group
                 $devMainServiceConnection = $null
                 if ($devMainVg.variables -and $devMainVg.variables.PSObject.Properties['DataverseServiceConnectionName']) {
                     $devMainServiceConnection = $devMainVg.variables.DataverseServiceConnectionName.value
                     Write-Host "  Found service connection '$devMainServiceConnection' in 'DEV - main' variable group" -ForegroundColor Gray
                 }
-                
+
                 Write-Host ""
                 Write-Host "Renaming variable group:" -ForegroundColor Cyan
                 Write-Host "  Old name: $oldName" -ForegroundColor Yellow
                 Write-Host "  New name: $newName" -ForegroundColor Green
-                
+
                 try {
                     # Get the full variable group details with project references
                     $devMainVgFull = Invoke-VSTeamRequest -Resource "distributedtask/variablegroups/$($devMainVg.id)" -Version '7.1-preview.2' -ProjectName $AzDoProject
-                    
+
                     # Update the name in the full object
                     $devMainVgFull.name = $newName
-                    
+
                     # Update the project reference names to match
                     if ($devMainVgFull.variableGroupProjectReferences -and $devMainVgFull.variableGroupProjectReferences.Count -gt 0) {
                         foreach ($ref in $devMainVgFull.variableGroupProjectReferences) {
                             $ref.name = $newName
                         }
                     }
-                    
+
                     # Add note variable for deprecated DataverseServiceConnectionName
                     if (-not $devMainVgFull.variables) {
                         $devMainVgFull.variables = @{}
                     }
                     $devMainVgFull.variables | Add-Member -MemberType NoteProperty -Name 'DataverseServiceConnectionName_NOTE' -Value @{ value = 'No longer used - kept for reference' } -Force
-                    
+
                     $body = $devMainVgFull | ConvertTo-Json -Depth 50 -Compress
-                    
+
                     [void](Invoke-VSTeamRequest -Method PUT -Resource "distributedtask/variablegroups/$($devMainVg.id)" -Body $body -ContentType 'application/json' -Version '7.1-preview.2' -ProjectName $AzDoProject)
                     Write-Host "  ✓ Renamed variable group successfully" -ForegroundColor Green
                 }
                 catch {
                     throw "Failed to rename variable group '$oldName' to '$newName': $($_.Exception.Message)"
                 }
-                
+
                 # Now rename the associated service connection if found
                 if ($devMainServiceConnection) {
                     Write-Host ""
                     Write-Host "Checking service connection '$devMainServiceConnection'..." -ForegroundColor Yellow
-                    
+
                     $serviceConnections = Invoke-VSTeamRequest -Resource "serviceendpoint/endpoints" -Version '7.1-preview.4' -ProjectName $AzDoProject
-                    
+
                     # Check if target service connection already exists
                     $scTarget = $serviceConnections.value | Where-Object { $_.name -eq 'DEV-main' }
-                    
+
                     if ($scTarget) {
                         Write-Host "  ✓ Service connection 'DEV-main' already has correct name (migration already completed)" -ForegroundColor Green
                     }
                     else {
                         # Find the service connection by the name from variable group
                         $devMainSc = $serviceConnections.value | Where-Object { $_.name -eq $devMainServiceConnection }
-                        
+
                         if ($devMainSc) {
                             $scOldName = $devMainServiceConnection
                             $scNewName = 'DEV-main'
-                            
+
                             Write-Host ""
                             Write-Host "Renaming service connection:" -ForegroundColor Cyan
                             Write-Host "  Old name: $scOldName" -ForegroundColor Yellow
                             Write-Host "  New name: $scNewName" -ForegroundColor Green
-                            
+
                             try {
                                 # Get the full service connection details
                                 $devMainScFull = Invoke-VSTeamRequest -Resource "serviceendpoint/endpoints/$($devMainSc.id)" -Version '7.1-preview.4' -ProjectName $AzDoProject
-                                
+
                                 # Update BOTH the top-level name and the project reference name
                                 $devMainScFull.name = $scNewName
-                                
+
                                 if ($devMainScFull.serviceEndpointProjectReferences -and $devMainScFull.serviceEndpointProjectReferences.Count -gt 0) {
                                     foreach ($ref in $devMainScFull.serviceEndpointProjectReferences) {
                                         $ref.name = $scNewName
                                     }
                                 }
-                                
+
                                 $bodyJson = $devMainScFull | ConvertTo-Json -Depth 50 -Compress
-                                
+
                                 # Use PUT to update the service connection
                                 [void](Invoke-VSTeamRequest -Method PUT -Resource "serviceendpoint/endpoints/$($devMainSc.id)" -Body $bodyJson -ContentType 'application/json' -Version '7.1-preview.4' -ProjectName $AzDoProject)
                                 Write-Host "  ✓ Renamed service connection successfully" -ForegroundColor Green

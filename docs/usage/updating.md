@@ -27,6 +27,37 @@ solutions, data hooks, and authentication before rolling them out across applica
 5. Deploy the exact new build to a representative non-production target. Verify upgrades, data changes, connections, ownership, and a repeated deployment.
 6. Promote that same build through normal controls, then roll out the shared update to other consumers.
 
+### Version-update pull request format
+
+For a shared ALM4Dataverse version update, use the title:
+`Update ALM4Dataverse from v<previous> to v<target>`.
+
+Use these body headings in order:
+
+1. `## End-user changes` — begin with
+   `GitHub release changes from v<previous> to v<target>:` and link the previous
+   and target release notes. Summarize release-level user impact here; keep fork
+   implementation and comparison details out of this section.
+2. `## Fork comparison` — give the source-ref audit at per-file level, or group
+   files only when an entire folder shares one rationale. Explain every directly
+   edited framework file separately, including its behavior, tests, and upstream
+   PR or proprietary justification. Do not summarize Code App framework changes
+   as an unexplained category.
+3. `## Implementation details` — describe internal compatibility and design work.
+4. `## Validation` — list commands, results, and known limitations.
+
+### Fork difference audit
+
+Before merging an ALM4Dataverse update, compare the fork HEAD with the exact
+ALM4Dataverse source commit or tag being adopted. Inventory every differing file
+and hunk, and classify each difference as upstream-compatible, documented
+proprietary config/hook/asset, framework-required, upstream candidate, or
+unexpected. Prefer configuration and hooks over framework changes; record the
+evidence and every unresolved item, include the per-file summary under
+`## Fork comparison` in the PR description, and submit non-proprietary fixes
+upstream. An audit with unresolved items must be reported as unresolved rather
+than passed.
+
 > [!IMPORTANT]
 > Updating the caller or shared repository does not patch old Release assets. Existing
 > artifacts still run their packaged deployment scripts. Rebuild to include a deployment-code

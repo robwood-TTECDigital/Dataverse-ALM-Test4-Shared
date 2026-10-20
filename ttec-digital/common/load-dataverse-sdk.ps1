@@ -46,8 +46,6 @@ foreach ($sdkAssemblyName in $sdkAssemblyNames) {
     $sdkAssembly = $rnwoodLoadContext.LoadFromAssemblyPath($sdkAssemblyPath.FullName)
   }
 
-  $assemblyLoadContext = [System.Runtime.Loader.AssemblyLoadContext]::GetLoadContext($sdkAssembly)
-
   foreach ($sdkType in $sdkAssembly.GetExportedTypes()) {
     if (-not $typeAcceleratorMap.ContainsKey($sdkType.FullName)) {
       $typeAcceleratorAdd.Invoke($null, [object[]] @($sdkType.FullName, $sdkType)) | Out-Null

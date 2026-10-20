@@ -12,7 +12,7 @@ function getQueryResults([Parameter(Mandatory)]$query, $connection = (getGlobalC
         $response.Entities | foreach-object { $results += $_ }
         $query.PageInfo.PageNumber++
         $query.PageInfo.PagingCookie = $response.PagingCookie
-        
+
     } while ($response.MoreRecords)
 
     return $results
@@ -23,10 +23,10 @@ function getRestQueryResults([Parameter(Mandatory)]$query, $connection = (getGlo
 
     while ($query) {
 
-        
+
         $response = $connection.ExecuteWebRequest([System.Net.Http.HttpMethod]::Get, $query, @{"Prefer"="odata.maxpagesize=5000"}, $null)
         $response.EnsureSuccessStatusCode() | out-null
-        
+
         $responsedata = $response.Content.ReadAsStringAsync().Result | convertfrom-json -depth 100
 
         $responsedata.value | write-output
@@ -38,5 +38,5 @@ function getRestQueryResults([Parameter(Mandatory)]$query, $connection = (getGlo
         }
     }
 
-    
+
 }

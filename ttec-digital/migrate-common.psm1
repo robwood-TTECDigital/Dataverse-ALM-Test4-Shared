@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
     Common functions for migrating Dataverse ALM repositories.
@@ -16,58 +16,58 @@
 
 function Build-SolutionsSection {
     param([array]$Solutions)
-    
+
     if (-not $Solutions -or $Solutions.Count -eq 0) {
         return "`n"
     }
-    
+
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.AppendLine()
-    
+
     foreach ($solution in $Solutions) {
         [void]$sb.AppendLine('        @{')
         [void]$sb.AppendLine("            name = '$($solution.name)'")
-        
+
         if ($solution.ContainsKey('deployUnmanaged')) {
             $deployUnmanagedValue = if ($solution.deployUnmanaged) { '$true' } else { '$false' }
             [void]$sb.AppendLine("            deployUnmanaged = $deployUnmanagedValue")
         }
-        
+
         if ($solution.ContainsKey('serviceAccountUpnConfigKey')) {
             [void]$sb.AppendLine("            serviceAccountUpnConfigKey = '$($solution.serviceAccountUpnConfigKey)'")
         }
-        
+
         [void]$sb.AppendLine('        }')
     }
-    
+
     [void]$sb.Append('    ')
     return $sb.ToString()
 }
 
 function Build-AssetsSection {
     param([array]$Assets)
-    
+
     if (-not $Assets -or $Assets.Count -eq 0) {
         return "`n"
     }
-    
+
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.AppendLine()
-    
+
     foreach ($asset in $Assets) {
         [void]$sb.AppendLine("        '$asset'")
     }
-    
+
     [void]$sb.Append('    ')
     return $sb.ToString()
 }
 
 function Build-HooksSection {
     param([hashtable]$Hooks)
-    
+
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.AppendLine()
-    
+
     # Build each hook section
     $hookNames = @('preExport', 'preExportSolution', 'parallelExportSolution', 'postExportSolution', 'postExport', 'preDeploy', 'postDeploy', 'preBuild', 'postBuild', 'dataMigrations')
     $hookComments = @{
@@ -83,13 +83,13 @@ function Build-HooksSection {
         'dataMigrations' = '# Called by `pipelines/scripts/deploy.ps1` after solutions are staged but before upgrades.
         # Use this for data migration scripts (e.g., moving data from one column to another before they disappear).'
     }
-    
+
     foreach ($hookName in $hookNames) {
         [void]$sb.AppendLine("        $($hookComments[$hookName])")
-        
+
         $padding = ' ' * [Math]::Max(1, 15 - $hookName.Length)
         [void]$sb.Append("        $hookName$padding = @(")
-        
+
         if ($Hooks.ContainsKey($hookName) -and $Hooks[$hookName] -and $Hooks[$hookName].Count -gt 0) {
             [void]$sb.AppendLine()
             foreach ($script in $Hooks[$hookName]) {
@@ -97,32 +97,32 @@ function Build-HooksSection {
             }
             [void]$sb.Append('        ')
         }
-        
+
         [void]$sb.AppendLine(')')
-        
+
         if ($hookName -ne 'dataMigrations') {
             [void]$sb.AppendLine()
         }
     }
-    
+
     [void]$sb.Append('    ')
     return $sb.ToString()
 }
 
 function Build-ScriptDependenciesSection {
     param([hashtable]$ScriptDependencies)
-    
+
     if (-not $ScriptDependencies -or $ScriptDependencies.Count -eq 0) {
         return "`n"
     }
-    
+
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.AppendLine()
-    
+
     foreach ($key in $ScriptDependencies.Keys) {
         [void]$sb.AppendLine("        '$key' = '$($ScriptDependencies[$key])'")
     }
-    
+
     [void]$sb.Append('    ')
     return $sb.ToString()
 }
@@ -130,20 +130,25 @@ function Build-ScriptDependenciesSection {
 function Build-LegacySection {
     param(
         [hashtable]$Config,
+        [string[]]$LegacyKeys,
+        [string[]]$FrameworkKeys,
         [array]$UnsupportedOptions
     )
-    
+
     $sb = New-Object System.Text.StringBuilder
-    
+
     # Write other migrated keys
-    $otherKeys = $Config.Keys | Where-Object { $_ -notin @('solutions', 'assets', 'hooks', 'scriptDependencies') }
-    
+    $otherKeys = @($LegacyKeys | Where-Object {
+            $_ -notin @('solutions', 'assets', 'hooks', 'scriptDependencies') -and
+            $_ -notin $FrameworkKeys
+        })
+
     if ($otherKeys.Count -gt 0) {
         [void]$sb.AppendLine()
         [void]$sb.AppendLine('    # Legacy configuration keys (migrated from almconfig.ps1)')
         [void]$sb.AppendLine('    # These may not be used by the new ALM framework')
         [void]$sb.AppendLine()
-        
+
         foreach ($key in $otherKeys) {
             $value = $Config[$key]
             $valueString = ConvertTo-PowerShellLiteral -Value $value -IndentLevel 1
@@ -151,7 +156,7 @@ function Build-LegacySection {
             [void]$sb.AppendLine()
         }
     }
-    
+
     # Add unsupported options as comments
     if ($UnsupportedOptions -and $UnsupportedOptions.Count -gt 0) {
         [void]$sb.AppendLine('    # Unsupported options from original configuration (for reference only)')
@@ -167,22 +172,22 @@ function Build-LegacySection {
         }
         [void]$sb.AppendLine('    #>')
     }
-    
+
     return $sb.ToString()
 }
 
 function ConvertTo-PowerShellLiteral {
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         $Value,
-        
+
         [Parameter(Mandatory = $false)]
         [int]$IndentLevel = 0
     )
-    
+
     $indent = '    ' * $IndentLevel
     $nextIndent = '    ' * ($IndentLevel + 1)
-    
+
     if ($null -eq $Value) {
         return '$null'
     }
@@ -201,15 +206,15 @@ function ConvertTo-PowerShellLiteral {
         if ($Value.Count -eq 0) {
             return '@()'
         }
-            
+
         $sb = New-Object System.Text.StringBuilder
         [void]$sb.AppendLine('@(')
-            
+
         foreach ($item in $Value) {
             $itemLiteral = ConvertTo-PowerShellLiteral -Value $item -IndentLevel ($IndentLevel + 1)
             [void]$sb.AppendLine("$nextIndent$itemLiteral")
         }
-            
+
         [void]$sb.Append("$indent)")
         return $sb.ToString()
     }
@@ -217,10 +222,10 @@ function ConvertTo-PowerShellLiteral {
         if ($Value.Count -eq 0) {
             return '@{}'
         }
-            
+
         $sb = New-Object System.Text.StringBuilder
         [void]$sb.AppendLine('@{')
-            
+
         foreach ($key in $Value.Keys) {
             if ($key -is [string]) {
                 $keyLiteral = "'$($key -replace "'", "''")'"
@@ -228,7 +233,7 @@ function ConvertTo-PowerShellLiteral {
                 $keyLiteral = $key.ToString()
             }
             $valueLiteral = ConvertTo-PowerShellLiteral -Value $Value[$key] -IndentLevel ($IndentLevel + 1)
-                    
+
                 # Handle multi-line values
                 if ($valueLiteral -like "*`n*") {
                     $valueLiteral = $valueLiteral.TrimEnd()
@@ -238,7 +243,7 @@ function ConvertTo-PowerShellLiteral {
                     [void]$sb.AppendLine("$nextIndent$keyLiteral = $valueLiteral")
                 }
         }
-            
+
         [void]$sb.Append("$indent}")
         return $sb.ToString()
     }
@@ -266,19 +271,19 @@ function Invoke-ConfigMigration {
     <#
     .SYNOPSIS
         Migrates almconfig.ps1 to alm-config.psd1 format.
-    
+
     .PARAMETER WorkspacePath
         Path to the repository workspace root.
-    
+
     .PARAMETER TemplateDirectory
         Path to the directory containing the alm-config.psd1 template.
-    
+
     .PARAMETER AlmConfigPath
         Path to the almconfig.ps1 file (if null, migration is skipped).
-    
+
     .PARAMETER OutputPath
         Path where the new alm-config.psd1 should be written.
-    
+
     .OUTPUTS
         Returns a hashtable with migration results including warnings and whether migration occurred.
     #>
@@ -286,26 +291,26 @@ function Invoke-ConfigMigration {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspacePath,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$TemplateDirectory,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$AlmConfigPath,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$OutputPath
     )
-    
+
     $result = @{
         Migrated = $false
         Warnings = @()
         AlreadyMigrated = $false
     }
-    
+
     # Check if migration already completed
     $AlmConfigMigratedPath = "$AlmConfigPath.migrated"
-    
+
     if (-not $AlmConfigPath -or -not (Test-Path $AlmConfigPath)) {
         if (Test-Path $AlmConfigMigratedPath) {
             Write-Host "almconfig.ps1 has already been migrated (found $AlmConfigMigratedPath)" -ForegroundColor Green
@@ -317,13 +322,13 @@ function Invoke-ConfigMigration {
             throw "almconfig.ps1 not found at: $AlmConfigPath"
         }
     }
-    
+
     $templatePath = Join-Path $TemplateDirectory 'alm-config.psd1'
-    
+
     if (-not (Test-Path $templatePath)) {
         throw "Template file not found at: $templatePath"
     }
-    
+
     Write-Host "Loading old configuration..." -ForegroundColor Yellow
     $oldConfig = & $AlmConfigPath
 
@@ -340,6 +345,7 @@ function Invoke-ConfigMigration {
         Write-Host "Creating new alm-config.psd1 from template..." -ForegroundColor Yellow
         $newConfig = Import-PowerShellDataFile -Path $templatePath
     }
+    $frameworkKeys = @($newConfig.Keys)
 
     # Track unsupported options
     $unsupportedOptions = @()
@@ -348,21 +354,21 @@ function Invoke-ConfigMigration {
     Write-Host "Migrating solutions..." -ForegroundColor Yellow
     if ($oldConfig.Solutions) {
         $migratedSolutions = @()
-    
+
         foreach ($solutionName in $oldConfig.Solutions) {
             $solutionEntry = @{
                 name = $solutionName
             }
-        
+
             # Check for solution-specific options
             if ($oldConfig.SolutionOptions -and $oldConfig.SolutionOptions.ContainsKey($solutionName)) {
                 $options = $oldConfig.SolutionOptions[$solutionName]
-            
+
                 # Map DeployUnmanaged
                 if ($options.ContainsKey('DeployUnmanaged')) {
                     $solutionEntry.deployUnmanaged = $options.DeployUnmanaged
                 }
-            
+
                 # Check for unsupported options
                 foreach ($key in $options.Keys) {
                     if ($key -eq 'SkipDeployment') {
@@ -394,10 +400,10 @@ function Invoke-ConfigMigration {
                     }
                 }
             }
-        
+
             $migratedSolutions += $solutionEntry
         }
-    
+
         $newConfig['solutions'] = $migratedSolutions
     }
 
@@ -469,26 +475,39 @@ function Invoke-ConfigMigration {
     $assetsSection = Build-AssetsSection -Assets $newConfig['assets']
     $hooksSection = Build-HooksSection -Hooks $newConfig['hooks']
     $scriptDependenciesSection = Build-ScriptDependenciesSection -ScriptDependencies $newConfig['scriptDependencies']
-    $legacySection = Build-LegacySection -Config $newConfig -UnsupportedOptions $unsupportedOptions
+    $legacyKeys = @($oldConfig.Keys)
+    $legacySection = Build-LegacySection -Config $newConfig -LegacyKeys $legacyKeys -FrameworkKeys $frameworkKeys -UnsupportedOptions $unsupportedOptions
 
     # Replace the template sections with customized content
     $output = $templateContent
 
-    # Replace solutions section
-    $output = $output -replace '(?s)(solutions = @\()[^)]*(\))', "`$1$solutionsSection`$2"
-
-    # Replace assets section
-    $output = $output -replace '(?s)(assets = @\()[^)]*(\))', "`$1$assetsSection`$2"
-
-    # Replace hooks section
-    $output = $output -replace '(?s)(hooks = @\{)[^}]*(    \})', "`$1$hooksSection`$2"
-
-    # Replace scriptDependencies section
-    $output = $output -replace '(?s)(scriptDependencies = @\{)[^}]*(\})', "`$1$scriptDependenciesSection`$2"
+    # Replace only the actual top-level sections. A non-greedy block match is
+    # anchored to the next top-level heading so nested examples and comments do
+    # not make the generated data file syntactically invalid.
+    $output = [regex]::Replace($output, '(?ms)^(?<prefix>\s*solutions = @\().*?(?<suffix>^\s*\)\r?\n\r?\n\s*# Organization-table)', {
+        param($match)
+        $match.Groups['prefix'].Value + $solutionsSection + $match.Groups['suffix'].Value
+    }, 1)
+    $output = [regex]::Replace($output, '(?ms)^(?<prefix>\s*assets = @\().*?(?<suffix>^\s*\)\r?\n\r?\n\s*# Hook scripts)', {
+        param($match)
+        $match.Groups['prefix'].Value + $assetsSection + $match.Groups['suffix'].Value
+    }, 1)
+    $output = [regex]::Replace($output, '(?ms)^(?<prefix>\s*hooks = @\{).*?(?<suffix>^\s*\}\r?\n\r?\n\s*# PowerShell modules)', {
+        param($match)
+        $match.Groups['prefix'].Value + $hooksSection + $match.Groups['suffix'].Value
+    }, 1)
+    $output = [regex]::Replace($output, '(?ms)^(?<prefix>\s*scriptDependencies = @\{).*?(?<suffix>^\s*\}\r?\n\r?\n\s*# Power Apps CLI)', {
+        param($match)
+        $match.Groups['prefix'].Value + $scriptDependenciesSection + $match.Groups['suffix'].Value
+    }, 1)
 
     # Add legacy section before the closing brace
     if ($legacySection) {
-        $output = $output -replace '(\r?\n)(\})$', "`$1$legacySection`$1`$2"
+        $closingBraceIndex = $output.LastIndexOf('}')
+        if ($closingBraceIndex -lt 0) {
+            throw 'The configuration template has no closing brace.'
+        }
+        $output = $output.Insert($closingBraceIndex, "`n$legacySection")
     }
 
     # Write the output file
@@ -509,8 +528,9 @@ function Invoke-ConfigMigration {
     # Rename original almconfig file
     Write-Host ""
     Write-Host "Renaming almconfig.ps1 to: $AlmConfigMigratedPath" -ForegroundColor Yellow
-    Rename-Item -Path $AlmConfigPath -NewName "$AlmConfigPath.migrated" -Force
-    
+    $migratedConfigName = "{0}.migrated" -f ([IO.Path]::GetFileName($AlmConfigPath))
+    Move-Item -LiteralPath $AlmConfigPath -Destination (Join-Path (Split-Path -Parent $AlmConfigPath) $migratedConfigName) -Force
+
     $result.Migrated = $true
     return $result
 }
@@ -523,7 +543,7 @@ function Invoke-WorkflowMigration {
     <#
     .SYNOPSIS
         Migrates legacy fork GitHub workflow files to the upstream composite-action model.
-    
+
     .DESCRIPTION
         Replaces legacy fork workflow stubs with the current workflow templates from
         copy-to-your-repo/.github/workflows.
@@ -531,10 +551,10 @@ function Invoke-WorkflowMigration {
         Existing workflow files are backed up with a .migrated suffix before replacement.
         The generated DEPLOY-main.yml is a starter template and may need environment-specific
         adjustments after migration.
-    
+
     .PARAMETER WorkspacePath
         Path to the repository workspace root.
-    
+
     .PARAMETER TemplateDirectory
         Path to the repository template root containing .github/workflows templates.
 
@@ -548,26 +568,26 @@ function Invoke-WorkflowMigration {
         [Parameter(Mandatory = $true)]
         [string]$TemplateDirectory
     )
-    
+
     $result = @{
         FilesMigrated = @()
         Warnings = @()
         AlreadyMigrated = $true
     }
-    
-    $workflowsPath = Join-Path $WorkspacePath '.github' 'workflows'
-    $templateWorkflowsPath = Join-Path $TemplateDirectory '.github' 'workflows'
+
+    $workflowsPath = Join-Path -Path $WorkspacePath -ChildPath '.github/workflows'
+    $templateWorkflowsPath = Join-Path -Path $TemplateDirectory -ChildPath '.github/workflows'
 
     if (-not (Test-Path $templateWorkflowsPath)) {
         throw "Template workflows directory not found: $templateWorkflowsPath"
     }
-    
+
     if (-not (Test-Path $workflowsPath)) {
         Write-Host ""
         Write-Host "No .github/workflows directory found - skipping workflow migration" -ForegroundColor Gray
         return $result
     }
-    
+
     Write-Host "`nMigrating GitHub workflow files..." -ForegroundColor Cyan
     Write-Host "Workflows directory: $workflowsPath" -ForegroundColor Gray
     Write-Host ""
@@ -606,7 +626,7 @@ function Invoke-WorkflowMigration {
     }
 
     $result.Warnings += 'Review DEPLOY-main.yml and replace the example TEST-main/PROD stages with your real deployment environments.'
-    
+
     return $result
 }
 

@@ -84,6 +84,14 @@ extensions, service connections, target settings, and pipeline resource permissi
 4. Deploy that exact successful build to the first non-production target and verify application behavior.
 5. Promote the same build through later targets. Configure branch/PR policies separately if validation is required before merge.
 
+### AI-Assisted Application Changes
+
+New application repositories scaffolded from ALM4Dataverse include an
+[`AGENTS.md`](copy-to-your-repo/AGENTS.md) that tells coding agents which shared
+framework is in use and where its guides live. When asking an agent to add or update
+Dataverse components, have it read that file and the
+[guide to adding solutions, plug-ins, web resources, and Code Apps](docs/usage/adding-dataverse-components.md) first.
+
 ## Documentation
 
 ### Initial Setup
@@ -96,6 +104,7 @@ extensions, service connections, target settings, and pipeline resource permissi
 ### Usage Instructions
 
 - [Branching strategies](docs/usage/branching-strategies.md): choose development and promotion branches.
+- [Adding solutions, plug-ins, web resources, and Code Apps](docs/usage/adding-dataverse-components.md): add Dataverse components to configured solutions.
 - [Exporting changes](docs/usage/exporting-changes.md): capture maker changes and understand version increments.
 - [Building releases](docs/usage/building-releases.md): artifacts, checker reports, deployment validation, and retention.
 - [Deploying](docs/usage/deploying.md): select builds, promote, retry, redeploy, and plan recovery.
@@ -108,6 +117,7 @@ extensions, service connections, target settings, and pipeline resource permissi
 
 - [ALM configuration](docs/config/alm-config.md): every application/default setting, merge behavior, hook context, checker, and timeout.
 - [Pipelines, actions, and scripts](docs/config/pipelines.md): inputs, outputs, parameters, permissions, and direct PowerShell usage.
+- [Git tag catalog](docs/config/git-tags.md): solution reservations, build identities, deployment pointers, gates, and cleanup metadata.
 - [GitHub variables and secrets](docs/config/github-secrets.md): canonical credential, prefix, secret-selection, and OIDC reference.
 - [Azure DevOps variable groups](docs/config/azdo-environment-variable-group.md): process owner and target values.
 - [Azure DevOps service connections](docs/config/azdo-environment-service-connection.md): authentication and authorization.
@@ -115,7 +125,6 @@ extensions, service connections, target settings, and pipeline resource permissi
 ### Example 'Hook' Extensions
 
 - [Data import and export](docs/config/example-hooks/data-import-export.md): configuration records, relationships, and deletion handling.
-- [Organization settings](docs/config/example-hooks/organization-settings.md): target configuration through deployment hooks.
 
 ### Further Reading
 

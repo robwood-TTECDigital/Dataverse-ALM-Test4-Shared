@@ -46,12 +46,107 @@ The supplied template additionally includes the `data` asset and example data ho
 | `assets` | Array of paths | `@('data')` in the template. |
 | `hooks` | Hashtable of script-path arrays | Empty except the template's `postExport` and `postDeploy` data hooks. |
 | `scriptDependencies` | Hashtable of module names and versions | `Rnwood.Dataverse.Data.PowerShell = '3.2.0'`. |
-| `pacCliVersion` | String | `'2.7.4'`. |
+| `organizationSettings`, `orgDbOrgSettings` | Hashtable of setting names to values | Empty; applied before deployment. |
+| `postDeployOrganizationSettings`, `postDeployOrgDbOrgSettings` | Hashtable of setting names to values | Empty; applied after the `postDeploy` hook. |
+| `powerPlatformSettings` | Hashtable of setting names to values | Empty; patched before deployment through the Power Platform API. |
+| `postDeployPowerPlatformSettings` | Hashtable of setting names to values | Empty; patched after the `postDeploy` hook. |
+| `pacCliVersion` | String | `'2.13.1'`. |
+| `nodeVersion` | String | `'22'`; used only by BUILD/IMPORT when at least one solution configures `codeApps`. |
 | `importTimeoutSeconds` | Number of seconds | `10800` per import. |
 | `buildValidation.baselineRelease` | String | `''`; no baseline. |
 | `solutionCheck` | Hashtable | Disabled; full settings below. |
 
 ## Configuration Sections
+
+### Organization Settings
+
+Use six top-level hashtables to configure organization-wide and Power Platform settings:
+
+| Key | Setting type | When applied |
+| --- | --- | --- |
+| `organizationSettings` | Organization-table columns | At the start of deployment, before the `preDeploy` hook. |
+| `orgDbOrgSettings` | OrgDbOrgSettings entries | At the start of deployment, before the `preDeploy` hook. |
+| `postDeployOrganizationSettings` | Organization-table columns | After the `postDeploy` hook, as the last deployment work. |
+| `postDeployOrgDbOrgSettings` | OrgDbOrgSettings entries | After the `postDeploy` hook, as the last deployment work. |
+| `powerPlatformSettings` | Power Platform environment-management settings | At the start of deployment, before the `preDeploy` hook. |
+| `postDeployPowerPlatformSettings` | Power Platform environment-management settings | After the `postDeploy` hook, as the last deployment work. |
+
+The unprefixed maps are the pre-deployment defaults. Each is optional; an omitted or
+empty map does nothing. Values can be static PowerShell values or scriptblocks that
+accept a `$Context` argument and emit exactly one value. The argument is a hashtable
+with this shape:
+
+```powershell
+@{
+    HookType = 'preDeploy' # 'postDeploy' for post-deployment maps
+    BaseDirectory = $ArtifactsPath
+    Config = $solutionsConfig
+    ArtifactsPath = $ArtifactsPath
+    UseUnmanagedSolutions = $UseUnmanagedSolutions
+}
+```
+
+`BaseDirectory` and `ArtifactsPath` are the artifact directory paths; `Config` is
+the merged configuration hashtable; `UseUnmanagedSolutions` is a Boolean. Power
+Platform setting scriptblocks additionally receive `EnvironmentId`, the resolved
+environment ID as a string.
+Scriptblocks are trusted PowerShell executed in the deployment process; use them to
+compute setting values, not as a security boundary. A scriptblock error or invalid
+number of output values fails deployment. Updates already applied aren't rolled back.
+The organization-table and OrgDb maps use `Set-DataverseOrganizationSettings`; the
+OrgDb maps use its `-OrgDbOrgSettings` mode rather than updating the organization
+table's XML column. Power Platform maps are sent as a PATCH request to the Power
+Platform Environment Management API using the pipeline's authenticated Azure identity.
+Organization-map keys can use the SchemaName casing shown in Microsoft's reference;
+the pipeline converts them to the lowercase logical names required by the Dataverse
+settings cmdlet. OrgDbOrgSettings names keep their documented casing.
+When `AZURE_CLIENT_SECRET` is configured, that service-principal credential is used;
+otherwise the Dataverse module's `DefaultAzureCredential` supports workload identity
+federation, managed identity, Azure CLI, and other configured Azure identities.
+
+```powershell
+organizationSettings = @{
+    IsCustomControlsInCanvasAppsEnabled = $true
+}
+
+orgDbOrgSettings = @{
+    IsLockDownOfUnmanagedCustomizationEnabled = $false
+}
+
+postDeployOrgDbOrgSettings = @{
+    IsLockDownOfUnmanagedCustomizationEnabled = $true
+}
+
+powerPlatformSettings = @{
+    PowerApps_AllowCodeApps = $true
+}
+```
+
+This example enables PCF controls in canvas apps, temporarily allows
+unmanaged customizations during deployment, then blocks them after successful
+deployment, and enables Code Apps. The setting keys and types must match the
+target feature's documentation.
+Microsoft lists organization-table columns in the [Organization table reference](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/organization)
+and describes supported setting updates in [Read and update environment settings](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/organization-table).
+For OrgDbOrgSettings, use Microsoft's [environment database settings guidance](https://learn.microsoft.com/en-us/power-platform/admin/environment-database-settings)
+and the [community-maintained settings list](https://github.com/seanmcne/OrgDbOrgSettings/blob/master/mspfedyn_/OrgDbOrgSettings/Solution/WebResources/mspfedyn_/OrgDbOrgSettings/Settings.xml).
+The third-party list may not include newer settings; verify each name and its type
+against current feature guidance before using it.
+
+The Power Platform API doesn't provide a complete catalog of environment-setting
+names. To discover a name, change the setting manually in PPAC and inspect the
+request and payload in your browser's developer tools Network tab. See Microsoft's
+[Environment Management Settings API](https://learn.microsoft.com/en-us/rest/api/power-platform/environmentmanagement/environment-management-settings)
+and [EnvironmentManagementSetting model reference](https://learn.microsoft.com/en-us/dotnet/api/microsoft.powerplatform.management.models.environmentmanagementsetting?view=power-platform-latest)
+and [Power Platform API authentication guidance](https://learn.microsoft.com/en-us/power-platform/admin/programmability-authentication-v2).
+Power Platform RBAC roles are currently available only at tenant scope; assign an
+appropriate role to the identity used for the API call. See the [service-principal RBAC tutorial](https://learn.microsoft.com/en-us/power-platform/admin/programmability-tutorial-rbac-role-assignment).
+
+Organization settings are applied by `DEPLOY`, `IMPORT`, and BUILD deployment
+validation because all three use the standard deployment script. This can change the
+validation environment and must be considered when choosing settings and targets.
+The configuration examples above show the setting-map shapes and the scope of each
+setting type.
 
 ### BUILD SemVer
 
@@ -106,6 +201,8 @@ solutions = @(
         name                      = 'MySolution'
         deployUnmanaged           = $false  # Optional
         serviceAccountUpnConfigKey = 'MySolutionServiceAccountUpn'  # Optional
+        codeApps                  = @('code-apps/customer-portal')  # Optional
+        codeAppPublishMethod     = 'solution'  # Optional: 'solution' (default) or 'pac'
     }
 )
 ```
@@ -115,10 +212,32 @@ solutions = @(
 - `name` (required): Dataverse unique solution name, not display name; must match `solutions/<name>` in source control.
 - `deployUnmanaged` (optional, default: false): Boolean indicating whether to deploy the unmanaged version instead of managed
 - `serviceAccountUpnConfigKey` (optional, default: 'DataverseServiceAccountUpn'): Name of the environment configuration key containing the service account UPN to use when activating processes in this solution
+- `codeApps` (optional): One or more code app project directories, relative to the repository root, to build and publish with this solution. Each project must contain `package.json`, `package-lock.json` (or `npm-shrinkwrap.json`), and `power.config.json`. BUILD and IMPORT run `npm ci` followed by `npm run build`, then include only `power.config.json` and the configured `buildPath` output in the artifacts. Project metadata, dependencies, `.git`, and linked/reparse paths are not deployment inputs and are never copied. Runtime files whose names are `.env` or `.env.*`, `.npmrc`, `credentials.json`, `serviceAccount.json`, `id_rsa` variants, exact private-key/client-secret basenames, or use `.p8`, `.jks`, `.cert`, `.cer`, `.crt`, `.der`, `.pem`, `.key`, `.pfx`, or `.p12` extensions are rejected. This is a filename policy, not arbitrary secret-content detection. The dependency installer ensures the configured `nodeVersion` and npm are available only when BUILD/IMPORT has at least one code app. Do not also list code app directories in `assets`.
+- `codeAppPublishMethod` (optional, default: `'solution'`): `'solution'` patches each built app's files and package URIs into its existing Code App component in the solution ZIP before any solution is imported. The app must already be present as a root component in that solution, with a matching `appDisplayName` in its `power.config.json`; otherwise deployment fails before importing any solution. `'pac'` retains the `pac code push` method after import.
 - `solutionCheck` (optional): Per-solution PAC checker settings merged with global `solutionCheck` settings (see below). Set `solutionCheck.enabled = $false` to skip checking a specific solution.
 - `mappings` (optional): Ordered SolutionPackager mapping entries used during BUILD and EXPORT; each entry may include the build command that produces its source during BUILD; see [Build Processing](#build-processing).
 
+The default `'solution'` method avoids calling the Power Platform API during deployment.
+This is useful when the pipeline identity does not have the broader Power Platform API
+RBAC assignment required by PAC's push operation. Dataverse application-user roles alone
+don't grant access to that API, and the documented RBAC assignment is not scoped to a
+single environment. If using `codeAppPublishMethod = 'pac'`, authorize the identity with
+an appropriate Power Platform API RBAC role (rather than relying on Entra application
+permissions alone), following Microsoft's [authentication guidance](https://learn.microsoft.com/en-us/power-platform/admin/programmability-authentication-v2)
+and [RBAC role assignment tutorial](https://learn.microsoft.com/en-us/power-platform/admin/programmability-tutorial-rbac-role-assignment).
+
 `BUILD` packs both managed and unmanaged packages. `DEPLOY` selects the package using `deployUnmanaged`; `IMPORT` always selects unmanaged packages for every solution. Use managed deployment for controlled downstream environments unless you have a specific reason to retain unmanaged customizations.
+
+BUILD and IMPORT install locked dependencies and run each configured app's
+`npm run build` script before packaging it. DEPLOY uses that built output from the
+selected artifact. With the default `'solution'` method, it updates the app files and
+manifest in the solution package before import. With `'pac'`, deployment runs
+`pac code push` after publishing Dataverse customizations, targeting the current
+environment and the owning solution. PAC uses the authentication established by the
+normal `connect.ps1` step.
+Dataverse `canvasapp` row CRUD can update metadata, but the `assets` file column is marked
+non-creatable and non-updatable; direct row updates cannot publish or replace the app's
+code.
 
 The service account is a real Dataverse user used to own and activate processes, not the
 application user used to authenticate.
@@ -130,6 +249,16 @@ application user used to authenticate.
 > on Linux, where environment variables are case-sensitive. See the
 > [Azure DevOps variable reference](azdo-environment-variable-group.md) or
 > [GitHub variable reference](github-secrets.md).
+
+### Node.js for Code Apps
+
+`nodeVersion` accepts a major version such as `'22'` or an exact release such as
+`'22.14.0'`. For a major version, the installer reuses an already available compatible
+Node.js version or downloads the latest stable patch from nodejs.org. Exact versions
+are pinned. Downloads are checksum-verified and cached under the runner user's
+`.alm4dataverse/tools/node` directory. This setup runs only when the dependency installer
+is invoked with its build flag by BUILD or IMPORT and at least one `codeApps` path is
+configured; EXPORT and deployment-only jobs do not install Node.js.
 
 ### Export Processing
 
@@ -167,6 +296,7 @@ per-solution summaries and retained diagnostics.
 build = @{
     parallel = $true
     maxParallel = 2
+    versionCollisionGuard = $true
 }
 ```
 
@@ -174,9 +304,12 @@ build = @{
 | --- | --- | --- | --- |
 | `build.parallel` | Boolean | `$true` | Run eligible build commands and solution packs in parallel within their respective stages; `$false` runs both stages sequentially. |
 | `build.maxParallel` | Integer, `1` to `8` | `2` | Maximum concurrent build commands or solution packs within each stage. |
+| `build.versionCollisionGuard` | Boolean | `$true` | Rejects different solution package content sharing the same solution version. Set to `$false` to disable the check. |
 
 Missing, null, or empty optional settings use the defaults; an explicit `$false`
 is preserved. Invalid types or out-of-range limits fail with a configuration error.
+The version collision guard prevents solutions that share the same version number
+but contain different content. Disabling it permits that risk.
 
 `mappings` is an ordered array of entries. Each entry directly represents one
 SolutionPackager directive and may include a `buildCommand` to produce its
@@ -264,6 +397,15 @@ concurrently, limited by `build.maxParallel`; set an individual command's
 `parallel = $false` to run it sequentially. Groups execute in order, and all
 commands finish before solution packing begins. When `build.parallel = $false`,
 all commands run sequentially in solution and mapping order.
+After packing and solution checks, BUILD fingerprints the resulting managed and
+unmanaged package contents. A previously claimed version is accepted only when
+the package fingerprint matches, so generated mapped output is covered even when
+it is ignored or otherwise invisible to EXPORT's Git-based source-change check.
+IMPORT skips the claim for its temporary unmanaged package because it deploys that
+package directly rather than publishing a release artifact.
+On a mismatch, increment the solution version and rebuild. EXPORT does not run
+mapping `buildCommand` entries, so make sure version changes for generated
+solution content are made in source or are otherwise visible to EXPORT.
 
 ### Assets
 
@@ -296,7 +438,6 @@ You can also include any other PowerShell module from the [PowerShell Gallery](h
 Example hooks:
 
 - [Data import and export](example-hooks/data-import-export.md) (for example config/system data)
-- [Organisation/environment settings](example-hooks/organization-settings.md) (for example enabling the 'PCF allowed' switch)
 
 ```powershell
 hooks = @{
@@ -349,7 +490,7 @@ Each hook script receives a `$Context` parameter containing:
   - Per-solution hooks also receive a cloned `Connection`. In parallel export mode, the hook worker sets that clone as its default connection for the duration of the hook, so existing Dataverse commands resolve to the right client. Hooks can also pass `$Context.Connection` explicitly. Parallel hooks receive the shared `OperationBudget` and `CancellationToken`.
   - `postExportSolution` hook output is collected by solution in `SolutionHookResults` and passed to the `postExport` hook.
   - `parallelExportSolution` hook output is collected by solution in `ParallelExportSolutionHookResults` and passed to the `postExport` hook.
-  - **preDeploy, dataMigrations, postDeploy**: `ArtifactsPath`, `UseUnmanagedSolutions`
+  - **preDeploy, dataMigrations, postDeploy**: `ArtifactsPath`, `UseUnmanagedSolutions`. The switch is true for IMPORT, which forces unmanaged packages; DEPLOY and BUILD validation leave it false, even when a solution is configured with `deployUnmanaged`.
 
 Start a hook with a parameter block. Resolve application-owned files from `$PSScriptRoot` or `$Context.BaseDirectory`, not from assumptions about the runner's working directory. Guard optional configuration keys when using strict mode:
 
@@ -415,14 +556,14 @@ The build writes the exact loaded module versions and installed PAC version to `
 The pipeline scripts require Power Apps CLI (`pac`) for solution operations (for example export/unpack). `installdependencies.ps1` installs PAC automatically using the configured version.
 
 ```powershell
-pacCliVersion = '2.7.4'
+pacCliVersion = '2.13.1'
 ```
 
 **Version Specifications:**
 
 - Empty string (`''`): Installs the latest stable version
 - `'prerelease'`: Installs the latest prerelease version
-- Specific version (for example `'2.7.4'`): Installs that exact version
+- Specific version (for example `'2.13.1'`): Installs that exact version
 
 For reproducible builds/deployments, pin an explicit version.
 

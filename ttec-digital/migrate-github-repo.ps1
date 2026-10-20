@@ -15,7 +15,7 @@
     Should contain almconfig.ps1.
 
 .PARAMETER TemplateDirectory
-    Optional path to the directory containing the template (alm-config.psd1). 
+    Optional path to the directory containing the template (alm-config.psd1).
     Defaults to copy-to-your-repo in the script's directory.
 
 .EXAMPLE
@@ -52,7 +52,7 @@ Import-Module $commonModule -Force
 $WorkspacePath = Resolve-Path $WorkspacePath -ErrorAction Stop
 
 if (-not $TemplateDirectory) {
-    $TemplateDirectory = Join-Path $scriptRoot '..' 'copy-to-your-repo'
+    $TemplateDirectory = Join-Path -Path $scriptRoot -ChildPath '../copy-to-your-repo'
 }
 
 # Determine almconfig.ps1 path
@@ -82,7 +82,7 @@ if (-not (Test-Path $AlmConfigPath)) {
     }
 }
 
-Write-Host "" 
+Write-Host ""
 Write-Host "==================================================================" -ForegroundColor Cyan
 Write-Host "Migrating GitHub Dataverse ALM repository to ALM4Dataverse format" -ForegroundColor Cyan
 Write-Host "==================================================================" -ForegroundColor Cyan

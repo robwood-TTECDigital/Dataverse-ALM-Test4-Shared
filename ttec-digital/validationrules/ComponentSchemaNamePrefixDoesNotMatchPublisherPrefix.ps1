@@ -9,7 +9,7 @@ $solutionId = $solutionIdResult[0].solutionid.ToString()
 
 # Get the publisher prefix for the solution
 $prefixSql = @"
-SELECT 
+SELECT
     p.customizationprefix
 FROM solution s
 INNER JOIN publisher p ON s.publisherid = p.publisherid
@@ -25,7 +25,7 @@ $correctprefix = $prefixResult[0].customizationprefix + "_"
 # Exclude certain component types: 3, 10, 61, 92, 300, 10044
 # Only check components that are not ShellOnly and don't have a managed version
 $sql = @"
-SELECT 
+SELECT
     sc.objectid,
     sc.componenttype
 FROM solutioncomponent sc
@@ -49,36 +49,36 @@ $results = Invoke-DataverseSQL -Sql $sql -Parameters @{
 $results | ForEach-Object {
     $componentId = $_.objectid
     $componentType = $_.componenttype
-    
+
     # Load component name to check prefix
     $names = getComponentNames -componentId $componentId -componentType $componentType -solutionId $solutionId -ValidationContext $context
-    
+
     if ($names) {
         $schemaName = $names.ComponentSchemaName
-        
+
         # Check if schema name contains underscore and doesn't start with correct prefix
         if ($schemaName -and $schemaName.Contains("_") -and -not $schemaName.StartsWith($correctprefix)) {
             # Check if this component should skip validation
             $mode = getValidationRuleMode -ruleName 'ComponentSchemaNamePrefixDoesNotMatchPublisherPrefix' -componentId $componentId -componentType $componentType -componentSchemaName $schemaName -solutionconfig $context.solutionconfig
-            
+
             # Override with rule-level mode if it's warning
             if ($context.ruleMode -eq 'warning' -and $mode -eq 'error') {
                 $mode = 'warning'
             }
-            
+
             if ($mode -eq 'skip') {
                 return
             }
-            
+
             $detailsObj = [PSCustomObject]@{
                 objectid = $componentId
                 componenttype = $componentType
                 ComponentSchemaName = $names.ComponentSchemaName
                 ComponentDisplayName = $names.ComponentDisplayName
             }
-            
+
             $detailsText = $detailsObj | Format-List | Out-String
-            
+
             writeResult -type "ComponentSchemaNamePrefixDoesNotMatchPublisherPrefix" `
                 -componentid $componentId `
                 -message "Component schema name prefix does not match publisher prefix ($correctprefix) for unmanaged component:`n$detailsText" `

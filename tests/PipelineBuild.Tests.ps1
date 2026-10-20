@@ -1,6 +1,7 @@
 BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $script:buildScript = Join-Path $repoRoot 'pipelines/scripts/build.ps1'
+    . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
     # Capture XML during packing: production removes the generated mapping file before
     # assertions run, so retaining its path alone cannot verify directives or escaping.
     if (-not ('AlmBuildMappingTestCapture' -as [type])) {
@@ -25,6 +26,13 @@ public static class AlmBuildMappingTestCapture
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Mock command signature; Pester inspects these arguments.')]
         param($Verb, $Operation, [Parameter(ValueFromRemainingArguments = $true)][string[]]$RemainingArguments)
     }
+    function Invoke-CodeAppTestNpm {
+        $global:LASTEXITCODE = 0
+    }
+    function Register-AlmSolutionContent {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Mock command signature; Pester inspects these arguments.')]
+        param($RepositoryPath, $SolutionName, $Version, $Fingerprint)
+    }
 }
 
 Describe 'Build artifacts and solution-check helpers' {
@@ -37,17 +45,20 @@ Describe 'Build artifacts and solution-check helpers' {
             ALM_BUILD_TEST_REQUIRE_PACK_COMMAND = $env:ALM_BUILD_TEST_REQUIRE_PACK_COMMAND
             ALM_BUILD_TEST_PACK_COMMAND_RESOLVED = $env:ALM_BUILD_TEST_PACK_COMMAND_RESOLVED
             ALM_BUILD_TEST_PARALLEL_COMMAND_STAGE = $env:ALM_BUILD_TEST_PARALLEL_COMMAND_STAGE
+            ALM_BUILD_TEST_PACKAGE_DIRECTORY = $env:ALM_BUILD_TEST_PACKAGE_DIRECTORY
         }
         $env:ALM_BUILD_TEST_REAL_PARALLEL = $null
         $env:ALM_BUILD_TEST_MODULE_PATH = $null
         $env:ALM_BUILD_TEST_REQUIRE_PACK_COMMAND = $null
         $env:ALM_BUILD_TEST_PACK_COMMAND_RESOLVED = $null
         $env:ALM_BUILD_TEST_PARALLEL_COMMAND_STAGE = $null
+        $env:ALM_BUILD_TEST_PACKAGE_DIRECTORY = $null
         $script:savedExitCode = $global:LASTEXITCODE
         $fixtureRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         $script:sourceDirectory = Join-Path $fixtureRoot 'source'
         $script:artifactDirectory = Join-Path $fixtureRoot 'artifacts'
-        New-Item -ItemType Directory -Path (Join-Path $script:sourceDirectory 'data'), (Join-Path $script:sourceDirectory 'solutions/Example'), (Join-Path $script:sourceDirectory 'plugins'), (Join-Path $script:artifactDirectory 'solutions') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:sourceDirectory 'data'), (Join-Path $script:sourceDirectory 'solutions/Example/Other'), (Join-Path $script:sourceDirectory 'plugins'), (Join-Path $script:artifactDirectory 'solutions') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'solutions/Example/Other/Solution.xml') -Value '<ImportExportXml><SolutionManifest><Version>1.0.0.0</Version></SolutionManifest></ImportExportXml>'
         Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'data/example.txt') -Value 'asset'
         Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'plugins/Example.dll') -Value 'plugin'
         Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'plugins/Second.dll') -Value 'plugin'
@@ -65,8 +76,16 @@ Describe 'Build artifacts and solution-check helpers' {
                 [AlmBuildMappingTestCapture]::MappingPath = $MappingFile
                 [AlmBuildMappingTestCapture]::MappingXml = Get-Content -LiteralPath $MappingFile -Raw
             }
-            Set-Content -LiteralPath $OutputPath -Value 'packed solution'
+            $archive = [System.IO.Compression.ZipFile]::Open($OutputPath, [System.IO.Compression.ZipArchiveMode]::Create)
+            try {
+                $entry = $archive.CreateEntry('Other/Solution.xml')
+                $writer = [System.IO.StreamWriter]::new($entry.Open())
+                try { $writer.Write('<Solution/>') }
+                finally { $writer.Dispose() }
+            }
+            finally { $archive.Dispose() }
         }
+        Mock Register-AlmSolutionContent {}
         Mock Copy-Item { New-Item -ItemType Directory -Path $Destination -Force | Out-Null } -ParameterFilter { $Destination -match '[\\/]alm$' }
         Mock Get-Module {
             if ($env:ALM_BUILD_TEST_REQUIRE_PACK_COMMAND -eq 'true' -and $env:ALM_BUILD_TEST_PACK_COMMAND_RESOLVED -ne 'true') {
@@ -86,10 +105,16 @@ Describe 'Build artifacts and solution-check helpers' {
             }
         } -ParameterFilter { $Name -eq 'Compress-DataverseSolutionFile' }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-TestDotnet' } } -ParameterFilter { $Name -eq 'dotnet' }
-        Mock Test-Path { $true } -ParameterFilter { $Path -match '[\\/]\.alm4dataverse[\\/]tools$' }
-        Mock Invoke-TestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.7.4+build pac' }
+        Mock Test-Path { $true } -ParameterFilter {
+            $candidatePath = if ($null -ne $LiteralPath) { [string]$LiteralPath } else { [string]$Path }
+            $candidatePath -match '[\\/]\.alm4dataverse[\\/]tools$'
+        }
+        Mock Invoke-TestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.13.1+build pac' }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-TestPac' } } -ParameterFilter { $Name -eq 'pac' }
         Mock Invoke-TestPac { $global:LASTEXITCODE = 0; 'Critical: 0'; 'High: 1'; 'Low: 2' }
+        # Fork defaults intentionally include Dataverse-dependent postBuild hooks;
+        # build unit tests isolate packing/checker behavior without provisioning a client.
+        Mock Invoke-Hook {}
         # Most cases keep work in Pester's runspace so mocks remain visible. Both overlap cases
         # opt out and supply an importable pack module to exercise actual worker isolation.
         Mock ForEach-Object {
@@ -117,17 +142,237 @@ Describe 'Build artifacts and solution-check helpers' {
     It 'packs solutions, copies assets/configuration, and locks actual installed versions' {
         & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
         Should -Invoke Compress-DataverseSolutionFile -Times 1 -Exactly -ParameterFilter { $PackageType -eq 'Both' }
+        Should -Invoke Register-AlmSolutionContent -Times 1 -Exactly -ParameterFilter { $SolutionName -eq 'Example' -and $Version.ToString() -eq '1.0.0.0' -and $Fingerprint -match '^[0-9a-f]{64}$' }
         Should -Invoke ForEach-Object -Times 1 -Exactly -ParameterFilter { $null -ne $Parallel -and $ThrottleLimit -eq 2 }
         Test-Path (Join-Path $script:artifactDirectory 'data/example.txt') | Should -BeTrue
         Test-Path (Join-Path $script:artifactDirectory 'alm-config.psd1') | Should -BeTrue
         $lock = Get-Content (Join-Path $script:artifactDirectory 'scriptDependencies.lock.json') -Raw | ConvertFrom-Json -AsHashtable
         $lock.scriptDependencies['Rnwood.Dataverse.Data.PowerShell'] | Should -Be '3.0.4-preview.1'
-        $lock.pacCliVersion | Should -Be '2.7.4'
+        $lock.pacCliVersion | Should -Be '2.13.1'
     }
 
     It 'rejects a missing extra asset' {
         Remove-Item (Join-Path $script:sourceDirectory 'data') -Recurse -Force
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } | Should -Throw '*Asset path not found*'
+    }
+
+    It 'copies configured code apps into clean build artifacts' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path (Join-Path $codeAppPath 'dist'), (Join-Path $codeAppPath 'node_modules/example') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package.json') -Value '{"scripts":{"build":"vite build"}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package-lock.json') -Value '{"lockfileVersion":3,"packages":{}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/index.html') -Value 'built'
+        New-Item -ItemType Directory -Path (Join-Path $codeAppPath 'dist/assets') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/assets/app.js') -Value 'runtime'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'node_modules/example/index.js') -Value 'dependency'
+        Set-Content -LiteralPath (Join-Path $codeAppPath '.env') -Value 'SECRET=do-not-copy'
+        Set-Content -LiteralPath (Join-Path $codeAppPath '.npmrc') -Value '//registry.npmjs.org/:_authToken=do-not-copy'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'client-private.key') -Value 'do-not-copy'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'certificate.pfx') -Value 'do-not-copy'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'credentials.json') -Value 'do-not-copy'
+        $staleArtifactPath = Join-Path $script:artifactDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path (Join-Path $staleArtifactPath 'dist') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $staleArtifactPath 'package.json') -Value 'stale project metadata'
+        Set-Content -LiteralPath (Join-Path $staleArtifactPath 'dist/removed-by-next-build.js') -Value 'stale runtime'
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'pac' })
+    assets = @('data')
+    hooks = @{}
+}
+'@
+        Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
+        Mock Invoke-CodeAppTestNpm { $global:LASTEXITCODE = 0 }
+        Mock Update-SolutionCodeAppPackage {}
+
+        & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
+
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/power.config.json') | Should -BeTrue
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/dist/index.html') | Should -BeTrue
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/package.json') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/package-lock.json') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/dist/removed-by-next-build.js') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/.env') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/.npmrc') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/client-private.key') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/certificate.pfx') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/credentials.json') | Should -BeFalse
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/node_modules') | Should -BeFalse
+        Should -Invoke Update-SolutionCodeAppPackage -Times 0 -Exactly
+        Should -Invoke Invoke-CodeAppTestNpm -Times 1 -Exactly -ParameterFilter { $args -contains 'ci' }
+        Should -Invoke Invoke-CodeAppTestNpm -Times 1 -Exactly -ParameterFilter {
+            $args -contains 'run' -and $args -contains 'build'
+        }
+    }
+
+    It 'allows the build command to create a missing Code App output directory' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path $codeAppPath -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package.json') -Value '{"scripts":{"build":"vite build"}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package-lock.json') -Value '{"lockfileVersion":3,"packages":{}}'
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'pac' })
+    assets = @('data')
+    hooks = @{}
+}
+'@
+        Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
+        Mock Invoke-CodeAppTestNpm {
+            if ($args -contains 'run' -and $args -contains 'build') {
+                New-Item -ItemType Directory -Path (Join-Path (Get-Location) 'dist') -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path (Get-Location) 'dist/index.html') -Value 'built'
+            }
+            $global:LASTEXITCODE = 0
+        }
+        Mock Update-SolutionCodeAppPackage {}
+
+        & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
+
+        Test-Path (Join-Path $script:artifactDirectory 'apps/Portal/dist/index.html') | Should -BeTrue
+        Should -Invoke Invoke-CodeAppTestNpm -Times 1 -Exactly -ParameterFilter {
+            $args -contains 'run' -and $args -contains 'build'
+        }
+    }
+
+    It 'patches solution-published code apps before claiming package content' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path (Join-Path $codeAppPath 'dist/assets') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package.json') -Value '{"scripts":{"build":"vite build"}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package-lock.json') -Value '{"lockfileVersion":3,"packages":{}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/index.html') -Value 'built'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/assets/app.js') -Value 'runtime'
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'solution' })
+    build = @{ parallel = $false }
+    hooks = @{}
+}
+'@
+        Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
+        Mock Invoke-CodeAppTestNpm { $global:LASTEXITCODE = 0 }
+        Mock Compress-DataverseSolutionFile {
+            $archive = [System.IO.Compression.ZipFile]::Open($OutputPath, [System.IO.Compression.ZipArchiveMode]::Create)
+            try {
+                $entries = @{
+                    'customizations.xml' = '<ImportExportXml><CanvasApps><CanvasApp><Name>contoso_portal</Name><DisplayName>Portal</DisplayName><CanvasAppType>4</CanvasAppType><CodeAppPackageUris><CodeAppPackageUri>/CanvasApps/contoso_portal_CodeAppPackages/old.js_ContentType_application/javascript</CodeAppPackageUri></CodeAppPackageUris></CanvasApp></CanvasApps></ImportExportXml>'
+                    'solution.xml' = '<ImportExportXml><SolutionManifest><RootComponents><RootComponent type="300" schemaName="contoso_portal" /></RootComponents></SolutionManifest></ImportExportXml>'
+                    'CanvasApps/contoso_portal_CodeAppPackages/old.js' = 'old app'
+                }
+                foreach ($entryData in $entries.GetEnumerator()) {
+                    $entry = $archive.CreateEntry($entryData.Key)
+                    $writer = [System.IO.StreamWriter]::new($entry.Open())
+                    try { $writer.Write($entryData.Value) }
+                    finally { $writer.Dispose() }
+                }
+            }
+            finally { $archive.Dispose() }
+            Copy-Item -LiteralPath $OutputPath -Destination ($OutputPath -replace '\.zip$', '_managed.zip') -Force
+        }
+        Mock Register-AlmSolutionContent {
+            foreach ($packageName in @('Example.zip', 'Example_managed.zip')) {
+                $packagePath = Join-Path $env:ALM_BUILD_TEST_PACKAGE_DIRECTORY $packageName
+                $archive = [System.IO.Compression.ZipFile]::OpenRead($packagePath)
+                try {
+                    if ($null -eq $archive.GetEntry('CanvasApps/contoso_portal_CodeAppPackages/index.html') -or
+                        $null -eq $archive.GetEntry('CanvasApps/contoso_portal_CodeAppPackages/assets/app.js')) {
+                        $entries = ($archive.Entries | ForEach-Object FullName) -join ', '
+                        throw "Solution content claim observed an unpatched $($packageName): $entries"
+                    }
+                }
+                finally {
+                    $archive.Dispose()
+                }
+            }
+        }
+        $env:ALM_BUILD_TEST_PACKAGE_DIRECTORY = Join-Path $script:artifactDirectory 'solutions'
+
+        & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
+
+        Should -Invoke Register-AlmSolutionContent -Times 1 -Exactly
+    }
+
+    It 'rejects unsafe files in Code App build output' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path (Join-Path $codeAppPath 'dist') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/index.html') -Value 'built'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/client-private.key') -Value 'do-not-copy'
+
+        { Get-CodeAppRuntimeManifest -CodeAppPath $codeAppPath } | Should -Throw '*unsafe runtime file*'
+    }
+
+    It 'rejects reparse paths in Code App build output' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        $buildPath = Join-Path $codeAppPath 'dist'
+        New-Item -ItemType Directory -Path $buildPath -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        $normalItem = [pscustomobject]@{
+            Attributes = [System.IO.FileAttributes]::Normal
+            FullName = Join-Path $buildPath 'index.html'
+            PSIsContainer = $false
+        }
+        $reparseItem = [pscustomobject]@{
+            Attributes = [System.IO.FileAttributes]::ReparsePoint
+            FullName = Join-Path $buildPath 'linked.js'
+            PSIsContainer = $false
+        }
+        # Model the filesystem metadata so the regression does not require symlink privileges.
+        Mock Get-ChildItem { @($normalItem, $reparseItem) }
+
+        { Get-CodeAppRuntimeManifest -CodeAppPath $codeAppPath } | Should -Throw '*linked or reparse path*'
+    }
+
+    It 'patches Code App packages before claiming solution content' {
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        New-Item -ItemType Directory -Path (Join-Path $codeAppPath 'dist') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"dist"}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package.json') -Value '{"scripts":{"build":"vite build"}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'package-lock.json') -Value '{"lockfileVersion":3,"packages":{}}'
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'dist/index.html') -Value 'built'
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'solution' })
+    build = @{ parallel = $false }
+    hooks = @{}
+}
+'@
+        Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
+        Mock Invoke-CodeAppTestNpm { $global:LASTEXITCODE = 0 }
+        Mock Compress-DataverseSolutionFile {
+            $archive = [System.IO.Compression.ZipFile]::Open($OutputPath, [System.IO.Compression.ZipArchiveMode]::Create)
+            try { $archive.CreateEntry('solution.xml') | Out-Null }
+            finally { $archive.Dispose() }
+            Copy-Item -LiteralPath $OutputPath -Destination ($OutputPath -replace '\.zip$', '_managed.zip') -Force
+        }
+        $codeAppBuildOrder = [System.Collections.Generic.List[string]]::new()
+        Mock Update-SolutionCodeAppPackage -MockWith ({ $codeAppBuildOrder.Add('patch') }.GetNewClosure())
+        Mock Register-AlmSolutionContent -MockWith ({ $codeAppBuildOrder.Add('claim') }.GetNewClosure())
+
+        try {
+            & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
+
+            $codeAppBuildOrder | Should -Be @('patch', 'patch', 'claim')
+        }
+        finally {
+            Remove-Variable codeAppBuildOrder -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects code app paths outside the repository' {
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example'; codeApps = @('../outside') })
+    assets = @('data')
+    hooks = @{}
+}
+'@
+
+        { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
+            Should -Throw '*must stay within the repository*'
     }
 
     It 'fails when a required module is not loaded' {
@@ -171,17 +416,36 @@ Describe 'Build artifacts and solution-check helpers' {
         { Convert-SolutionCheckSeverityToRank -Severity Unknown } | Should -Throw '*Unknown solution check severity*'
     }
 
-    It 'uses defaults for missing build settings and validates explicit parallel limits' {
+    It 'uses defaults for build settings and validates the collision guard' {
         . $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
         $settings = Get-AlmBuildSetting -Config @{}
         $settings.parallel | Should -BeTrue
         $settings.maxParallel | Should -Be 2
+        $settings.versionCollisionGuard | Should -BeTrue
         $settings = Get-AlmBuildSetting -Config @{ build = @{ parallel = $false; maxParallel = 4 } }
         $settings.parallel | Should -BeFalse
         $settings.maxParallel | Should -Be 4
+        $settings = Get-AlmBuildSetting -Config @{ build = @{ versionCollisionGuard = $false } }
+        $settings.versionCollisionGuard | Should -BeFalse
         { Get-AlmBuildSetting -Config @{ build = 'invalid' } } | Should -Throw '*build must be a hashtable*'
         { Get-AlmBuildSetting -Config @{ build = @{ parallel = 'false' } } } | Should -Throw '*build.parallel*'
         { Get-AlmBuildSetting -Config @{ build = @{ maxParallel = 9 } } } | Should -Throw '*build.maxParallel*'
+        { Get-AlmBuildSetting -Config @{ build = @{ versionCollisionGuard = 'false' } } } | Should -Throw '*build.versionCollisionGuard*'
+    }
+
+    It 'skips package content claims when the version collision guard is disabled' {
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
+@{
+    solutions = @(@{ name = 'Example' })
+    build = @{ parallel = $false; versionCollisionGuard = $false }
+    assets = @()
+    hooks = @{}
+}
+'@
+
+        & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
+
+        Should -Invoke Register-AlmSolutionContent -Times 0 -Exactly
     }
 
     It 'runs build commands in parallel by default before packing' {
@@ -369,6 +633,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
             }
         )
     })
+    build = @{ versionCollisionGuard = `$false }
     assets = @('data')
     hooks = @{}
 }
@@ -445,14 +710,14 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
 
         Should -Invoke Compress-DataverseSolutionFile -Times 1 -Exactly -ParameterFilter { -not [string]::IsNullOrWhiteSpace($MappingFile) }
         Should -Invoke Invoke-TestPac -Times 0 -Exactly
-        [AlmBuildMappingTestCapture]::MappingXml | Should -Match '<Mappings>'
+        [AlmBuildMappingTestCapture]::MappingXml | Should -Match '<Mapping>'
         [AlmBuildMappingTestCapture]::MappingXml | Should -Match 'bin&amp;build'
         $mappingXml = [xml][AlmBuildMappingTestCapture]::MappingXml
-        $mappingTypes = @($mappingXml.Mappings.ChildNodes | ForEach-Object { $_.LocalName }) -join ','
+        $mappingTypes = @($mappingXml.Mapping.ChildNodes | ForEach-Object { $_.LocalName }) -join ','
         $mappingTypes | Should -Be 'FileToFile,Folder,FileToPath'
-        $mappingXml.Mappings.FileToFile.GetAttribute('to') | Should -Be ([System.IO.Path]::GetFullPath($pluginFile))
+        $mappingXml.Mapping.FileToFile.GetAttribute('to') | Should -Be ([System.IO.Path]::GetFullPath($pluginFile))
         $expectedPluginDestination = [System.IO.Path]::GetFullPath((Join-Path $script:sourceDirectory 'solutions/Example/PluginAssemblies/Example.dll'))
-        $mappingXml.Mappings.FileToFile.GetAttribute('map') | Should -Be $expectedPluginDestination
+        $mappingXml.Mapping.FileToFile.GetAttribute('map') | Should -Be $expectedPluginDestination
         Test-Path -LiteralPath ([AlmBuildMappingTestCapture]::MappingPath) | Should -BeFalse
     }
 
@@ -550,6 +815,42 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
         Should -Invoke ForEach-Object -Times 0 -Exactly -ParameterFilter { $null -ne $Parallel }
     }
 
+    It 'rejects intermediate and buildPath reparse points before code app work' {
+        $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+        $linkedParent = Join-Path $script:sourceDirectory 'linked-apps'
+        $realParent = Join-Path $TestDrive 'real-apps'
+        $realProject = Join-Path $realParent 'Portal'
+        New-Item -ItemType Directory -Path $realProject -Force | Out-Null
+        $linkCreated = $true
+        try {
+            New-Item -ItemType $linkType -Path $linkedParent -Target $realParent -Force | Out-Null
+        }
+        catch {
+            $linkCreated = $false
+            Set-ItResult -Skipped -Because "The test host refused $linkType fixture creation."
+        }
+        if (-not $linkCreated) {
+            return
+        }
+
+        {
+            Get-SolutionCodeAppPath -Solution @{ name = 'Example'; codeApps = @('linked-apps/Portal') } -BaseDirectory $script:sourceDirectory
+        } | Should -Throw '*reparse*'
+
+        $codeAppPath = Join-Path $script:sourceDirectory 'apps/Portal'
+        $buildTarget = Join-Path $TestDrive 'real-build'
+        New-Item -ItemType Directory -Path $codeAppPath, $buildTarget -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $codeAppPath 'power.config.json') -Value '{"appDisplayName":"Portal","buildPath":"linked-build"}'
+        try {
+            New-Item -ItemType $linkType -Path (Join-Path $codeAppPath 'linked-build') -Target $buildTarget -Force | Out-Null
+        }
+        catch {
+            Set-ItResult -Skipped -Because "The test host refused $linkType buildPath fixture creation."
+            return
+        }
+        { Get-CodeAppRuntimeManifest -CodeAppPath $codeAppPath } | Should -Throw '*reparse*'
+    }
+
     It 'packs multiple solutions concurrently through real parallel runspaces' {
         $solutionRoot = Join-Path $script:sourceDirectory 'solutions'
         New-Item -ItemType Directory -Path (Join-Path $solutionRoot 'First'), (Join-Path $solutionRoot 'Second') -Force | Out-Null
@@ -578,6 +879,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
         Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value @'
 @{
     solutions = @(@{ name = 'First' }, @{ name = 'Second' })
+    build = @{ versionCollisionGuard = $false }
     assets = @('data')
     hooks = @{}
 }
@@ -643,6 +945,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
 @{
     solutions = @(@{ name = 'Example'; solutionCheck = @{} }, @{ name = 'Disabled'; solutionCheck = @{ enabled = $false } })
     solutionCheck = @{ enabled = $true; maxParallel = 0; geo = 'UnitedStates'; ruleSet = 'rule-set'; excludedFiles = '*.js'; ruleLevelOverride = @{ Id = 'rule'; OverrideLevel = 'Low' }; failThreshold = 'Critical' }
+    build = @{ versionCollisionGuard = $false }
     assets = @('data')
     hooks = @{}
 }

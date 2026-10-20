@@ -18,12 +18,18 @@
     The root directory containing the solution folders and alm-config.psd1 file.
 .PARAMETER ArtifactStagingDirectory
     The directory where the built artifacts will be placed.
+.PARAMETER SkipVersionCollisionGuard
+    Skips the remote package-content claim for temporary packages, such as the
+    unmanaged package created by IMPORT. Normal BUILD runs should not use this.
 .NOTES
     Run installdependencies.ps1 first in this process. Requires PowerShell 7 for
     parallel packing/checks. Checker failures write reports before throwing;
     missing assets or unresolved installed dependency versions also fail the build.
     Artifact contents include deployment scripts, configuration and exact dependency
-    versions; this script does not publish or tag the artifact.
+    versions. When build.versionCollisionGuard is enabled, each solution package
+    version is claimed against its content using a remote annotated Git tag; the
+    build identity then needs permission to create tags. IMPORT skips this claim
+    because its temporary package is deployed directly rather than published.
 .EXAMPLE
     .\pipelines\scripts\build.ps1 -SourceDirectory . -ArtifactStagingDirectory .\artifacts
 #>
@@ -33,7 +39,9 @@ param(
     [string]$SourceDirectory,
 
     [Parameter(Mandatory=$true)]
-    [string]$ArtifactStagingDirectory
+    [string]$ArtifactStagingDirectory,
+
+    [switch]$SkipVersionCollisionGuard
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,17 +82,17 @@ function Get-AlmBuildSetting {
     .SYNOPSIS
         Returns validated packing settings without mutating Config.
     .DESCRIPTION
-        Defaults to parallel=true and maxParallel=2. Null or empty-string entries
-        retain defaults; explicit false is honored. Parallel must be Boolean and
-        maxParallel an integer from 1 to 8, even when sequential packing is selected.
+        Defaults to parallel=true, maxParallel=2 and versionCollisionGuard=true.
+        Null or empty-string entries retain defaults; explicit false is honored.
+        Both Boolean settings must be Boolean and maxParallel an integer from 1 to 8.
     #>
     [OutputType([hashtable])]
     param([Parameter(Mandatory)][hashtable]$Config)
 
-    $settings = @{ parallel = $true; maxParallel = 2 }
+    $settings = @{ parallel = $true; maxParallel = 2; versionCollisionGuard = $true }
     if ($Config.ContainsKey('build') -and $null -ne $Config.build) {
         if ($Config.build -isnot [hashtable]) { throw 'build must be a hashtable.' }
-        foreach ($name in @('parallel', 'maxParallel')) {
+        foreach ($name in @('parallel', 'maxParallel', 'versionCollisionGuard')) {
             if ($Config.build.ContainsKey($name)) {
                 $value = $Config.build[$name]
                 if ($null -ne $value -and -not ($value -is [string] -and $value -eq '')) { $settings[$name] = $value }
@@ -92,6 +100,7 @@ function Get-AlmBuildSetting {
         }
     }
     if ($settings.parallel -isnot [bool]) { throw 'build.parallel must be $true or $false.' }
+    if ($settings.versionCollisionGuard -isnot [bool]) { throw 'build.versionCollisionGuard must be $true or $false.' }
     if ($settings.maxParallel -isnot [int] -or $settings.maxParallel -lt 1 -or $settings.maxParallel -gt 8) {
         throw 'build.maxParallel must be an integer between 1 and 8.'
     }
@@ -796,6 +805,59 @@ if ($mappedSolutions.Count -gt 0 -and -not $packSupportsMappingFile) {
     throw "Solution mappings require a version of Rnwood.Dataverse.Data.PowerShell that supports -MappingFile. Update scriptDependencies in alm-config.psd1 to the compatible module version."
 }
 
+$builtCodeApps = @{}
+foreach ($solution in $config.solutions) {
+    foreach ($codeAppPath in (Get-SolutionCodeAppPath -Solution $solution -BaseDirectory $SourceDirectory)) {
+        if ($builtCodeApps.ContainsKey($codeAppPath)) {
+            continue
+        }
+        $builtCodeApps[$codeAppPath] = $true
+
+        $packageJsonPath = Join-Path $codeAppPath 'package.json'
+        if (-not (Test-Path -LiteralPath $packageJsonPath -PathType Leaf)) {
+            throw "Code app '$codeAppPath' must contain package.json to run its build."
+        }
+        $powerConfigPath = Join-Path $codeAppPath 'power.config.json'
+        if (-not (Test-Path -LiteralPath $powerConfigPath -PathType Leaf)) {
+            throw "Code app '$codeAppPath' must contain power.config.json before its build can run."
+        }
+        try {
+            $powerConfig = Get-Content -LiteralPath $powerConfigPath -Raw | ConvertFrom-Json -AsHashtable
+        }
+        catch {
+            throw "Code app '$codeAppPath' power.config.json is invalid JSON. $($_.Exception.Message)"
+        }
+        $configuredBuildPath = if ($powerConfig.ContainsKey('buildPath') -and
+            -not [string]::IsNullOrWhiteSpace([string]$powerConfig.buildPath)) {
+            [string]$powerConfig.buildPath
+        } else {
+            'dist'
+        }
+        $null = Get-CodeAppBuildRoot -CodeAppPath $codeAppPath -BuildPath $configuredBuildPath -AllowMissing
+        if (-not (Test-Path -LiteralPath (Join-Path $codeAppPath 'package-lock.json') -PathType Leaf) -and
+            -not (Test-Path -LiteralPath (Join-Path $codeAppPath 'npm-shrinkwrap.json') -PathType Leaf)) {
+            throw "Code app '$codeAppPath' must contain package-lock.json or npm-shrinkwrap.json so its dependencies can be installed reproducibly."
+        }
+
+        $npm = Get-Command npm -ErrorAction SilentlyContinue
+        if (-not $npm) {
+            throw "npm is required to build code app '$codeAppPath'. Run installdependencies.ps1 -ForBuild to install the configured Node.js version."
+        }
+
+        Write-Host "##[group]Building code app: $codeAppPath"
+        Push-Location -LiteralPath $codeAppPath
+        try {
+            Invoke-CheckedNativeCommand -Command $npm.Source -Arguments @('ci')
+            Invoke-CheckedNativeCommand -Command $npm.Source -Arguments @('run', 'build')
+            $null = Get-CodeAppRuntimeManifest -CodeAppPath $codeAppPath
+        }
+        finally {
+            Pop-Location
+            Write-Host "##[endgroup]"
+        }
+    }
+}
+
 $buildCommandPlans = @(Get-SolutionBuildCommandPlan -MappingPlans $mappingPlans -SourceDirectory $SourceDirectory)
 if ($buildCommandPlans.Count -gt 0) {
     # Consecutive flag groups, rather than a global parallel/sequential partition,
@@ -998,7 +1060,69 @@ finally {
     }
 }
 
+# Solution-published Code Apps are part of the solution package content. Patch
+# both package variants before checking or claiming their fingerprints; PAC mode
+# intentionally leaves the solution ZIP unchanged for the post-import push.
+foreach ($solution in $config.solutions) {
+    if ((Get-SolutionCodeAppPublishMethod -Solution $solution) -ne 'solution') {
+        continue
+    }
+    $solutionName = [string]$solution.name
+    foreach ($codeAppPath in (Get-SolutionCodeAppPath -Solution $solution -BaseDirectory $SourceDirectory)) {
+        foreach ($packageName in @("$solutionName.zip", "${solutionName}_managed.zip")) {
+            $packagePath = Join-Path $ArtifactStagingDirectory "solutions/$packageName"
+            if (Test-Path -LiteralPath $packagePath -PathType Leaf) {
+                Update-SolutionCodeAppPackage `
+                    -SolutionFile $packagePath `
+                    -CodeAppPath $codeAppPath `
+                    -SolutionName $solutionName
+            }
+        }
+    }
+}
+
 Invoke-SolutionCheck -Config $config -SourceDirectory $SourceDirectory -ArtifactStagingDirectory $ArtifactStagingDirectory
+
+# A solution version may be reused only when every package with that solution
+# unique name has identical normalized ZIP contents. Claim after checks pass and
+# before publishing any artifact so parallel builds cannot publish conflicting
+# content under the same version.
+if ($buildSettings.versionCollisionGuard -and -not $SkipVersionCollisionGuard) {
+    foreach ($solution in $config.solutions) {
+        $solutionName = [string]$solution.name
+        $solutionXmlPath = Join-Path $SourceDirectory "solutions/$solutionName/Other/Solution.xml"
+        if (-not (Test-Path -LiteralPath $solutionXmlPath -PathType Leaf)) {
+            throw "Solution '$solutionName' has no Solution.xml for the BUILD version collision check: $solutionXmlPath"
+        }
+        [xml]$solutionXml = Get-Content -LiteralPath $solutionXmlPath
+        $solutionVersionText = [string]$solutionXml.ImportExportXml.SolutionManifest.Version
+        if ($solutionVersionText -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw "Solution '$solutionName' has an invalid four-part version '$solutionVersionText'; BUILD cannot check for version collisions."
+        }
+        $solutionVersion = [version]$solutionVersionText
+
+        $packageDirectory = Join-Path $ArtifactStagingDirectory 'solutions'
+        $packagePaths = @(
+            @(
+                (Join-Path $packageDirectory "$solutionName.zip"),
+                (Join-Path $packageDirectory "${solutionName}_managed.zip")
+            ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+        )
+        if ($packagePaths.Count -eq 0) {
+            throw "BUILD produced no solution package for '$solutionName'; the version collision check cannot continue."
+        }
+
+        $fingerprint = Get-AlmSolutionPackageFingerprint -PackagePaths $packagePaths
+        Register-AlmSolutionContent `
+            -RepositoryPath $SourceDirectory `
+            -SolutionName $solutionName `
+            -Version $solutionVersion `
+            -Fingerprint $fingerprint
+    }
+}
+elseif (-not $SkipVersionCollisionGuard) {
+    Write-Warning 'BUILD solution version collision guard is disabled. Different package content may be published under the same solution version.'
+}
 
 if ($config.ContainsKey('assets') -and $config.assets -and $config.assets.Count -gt 0) {
     Write-Host "##[group]Copying extra asset files"
@@ -1016,6 +1140,30 @@ if ($config.ContainsKey('assets') -and $config.assets -and $config.assets.Count 
     }
     Write-Host "##[endgroup]"
 }
+
+Write-Host "##[group]Copying code apps"
+foreach ($solution in $config.solutions) {
+    foreach ($codeAppPath in (Get-SolutionCodeAppPath -Solution $solution -BaseDirectory $SourceDirectory)) {
+        $relativePath = [System.IO.Path]::GetRelativePath([System.IO.Path]::GetFullPath($SourceDirectory), $codeAppPath)
+        $destinationPath = Join-Path $ArtifactStagingDirectory $relativePath
+        $runtimeManifest = Get-CodeAppRuntimeManifest -CodeAppPath $codeAppPath
+        Write-Host "Copying Code App runtime for solution '$($solution.name)': $relativePath"
+        if (Test-Path -LiteralPath $destinationPath) {
+            Remove-Item -LiteralPath $destinationPath -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
+        Copy-Item -LiteralPath $runtimeManifest.PowerConfigPath `
+            -Destination (Join-Path $destinationPath 'power.config.json') -Force
+        foreach ($file in $runtimeManifest.BuildFiles) {
+            $fileRelativePath = Join-Path $runtimeManifest.BuildPath $file.RelativePath
+            $artifactFilePath = Join-Path $destinationPath $fileRelativePath
+            $artifactFileDirectory = Split-Path -Parent $artifactFilePath
+            New-Item -ItemType Directory -Path $artifactFileDirectory -Force | Out-Null
+            Copy-Item -LiteralPath $file.FilePath -Destination $artifactFilePath -Force
+        }
+    }
+}
+Write-Host "##[endgroup]"
 
 Write-Host "##[group]Copying deployment scripts"
 Copy-Item $PSScriptRoot/../.. -Destination "$ArtifactStagingDirectory/alm" -Recurse -Force -Verbose

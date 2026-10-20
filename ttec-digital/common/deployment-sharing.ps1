@@ -1,17 +1,15 @@
 function shareCanvasApp(
     [Parameter(Mandatory)] [string] $uniquename,
-    [Parameter(Mandatory)] [AllowEmptyCollection()] [guid[]] $aadgroupids,
-    [Parameter(Mandatory)][string] $serviceaccountupn,
-    [string] $serviceaccountpassword,
-    [string] $serviceaccounttotpsecret
+    [Parameter(Mandatory)] [AllowEmptyCollection()] [guid[]] $aadgroupids
 ) {
 
     $connection = (getGlobalCrmConnection)
+    $adminEnvironmentId = Get-Variable -Name PowerAppsAdminEnvironmentId -Scope Global -ValueOnly
     $query = new-object Microsoft.Xrm.Sdk.Query.QueryExpression "canvasapp"
     $query.ColumnSet.AddColumns("canvasappid")
     $query.ColumnSet.AddColumns("uniquecanvasappid")
     $query.Criteria.AddCondition("name", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $uniquename)
-    
+
     $app = $connection.RetrieveMultiple($query).Entities | select-object -first 1
     if (-not $app) {
         throw "Canvas App with unique name '$uniquename' was not found"
@@ -22,22 +20,20 @@ function shareCanvasApp(
         $appname = $app["uniquecanvasappid"]
     }
 
-    $environmentid = getEnvironmentId
-
     foreach ($aadgroupid in $aadgroupids) {
         write-host "Sharing Canvas app $uniquename ($appname) with AAD group $aadgroupid"
 
-        Set-AdminPowerAppRoleAssignment -PrincipalType Group -PrincipalObjectId $aadgroupid -RoleName "CanView" -AppName $appname -EnvironmentName $global:PowerAppsAdminEnvironmentId  | out-null
+        Set-AdminPowerAppRoleAssignment -PrincipalType Group -PrincipalObjectId $aadgroupid -RoleName "CanView" -AppName $appname -EnvironmentName $adminEnvironmentId  | out-null
     }
 
-    @(Get-AdminPowerAppRoleAssignment -EnvironmentName $global:PowerAppsAdminEnvironmentId -AppName $appname) | Where-Object { 
-        $_ -and 
+    @(Get-AdminPowerAppRoleAssignment -EnvironmentName $adminEnvironmentId -AppName $appname) | Where-Object {
+        $_ -and
         $_.PrincipalType -eq "Group" -and $aadgroupids -notcontains ([guid] $_.PrincipalObjectId) } |
     Foreach-Object {
         write-host "Removing sharing of Canvas app $uniquename with AAD group $($_.PrincipalObjectId)"
-        Remove-AdminPowerAppRoleAssignment -EnvironmentName $global:PowerAppsAdminEnvironmentId -AppName $appname -roleid $_.RoleId | out-null
+        Remove-AdminPowerAppRoleAssignment -EnvironmentName $adminEnvironmentId -AppName $appname -roleid $_.RoleId | out-null
     }
-    
+
 
 }
 
@@ -46,14 +42,15 @@ function shareFlow(
     [Parameter(Mandatory)] [AllowEmptyCollection()] [guid[]] $aadgroupids
 ) {
     $connection = (getGlobalCrmConnection)
+    $adminEnvironmentId = Get-Variable -Name PowerAppsAdminEnvironmentId -Scope Global -ValueOnly
     $query = new-object Microsoft.Xrm.Sdk.Query.QueryExpression "workflow"
     $query.ColumnSet.AddColumns("workflowid")
     $query.ColumnSet.AddColumns("workflowidunique")
     $query.Criteria.AddCondition("workflowid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $workflowid)
-    
+
     $workflow = $connection.RetrieveMultiple($query).Entities | select-object -first 1
     if (-not $workflow) {
-        throw "Workflow with unique name '$uniquename' was not found"
+        throw "Workflow with id '$workflowid' was not found"
     }
 
     $flowname = $workflow["workflowid"]
@@ -65,14 +62,14 @@ function shareFlow(
 
         write-host "Sharing Flow $workflowid with AAD group $aadgroupid"
 
-        Set-AdminFlowOwnerRole -PrincipalType Group -PrincipalObjectId $aadgroupid -RoleName "CanView" -Flowname $flowname -EnvironmentName $global:PowerAppsAdminEnvironmentId  | out-null
+        Set-AdminFlowOwnerRole -PrincipalType Group -PrincipalObjectId $aadgroupid -RoleName "CanView" -Flowname $flowname -EnvironmentName $adminEnvironmentId  | out-null
     }
 
-    @(Get-AdminFlowOwnerRole -EnvironmentName $global:PowerAppsAdminEnvironmentId -flowname $flowname) |
+    @(Get-AdminFlowOwnerRole -EnvironmentName $adminEnvironmentId -flowname $flowname) |
     Where-Object { $_ -and $_.PrincipalType -eq "Group" -and $aadgroupids -notcontains ([guid] $_.PrincipalObjectId) } |
     Foreach-Object {
         write-host "Removing sharing of Flow $workflowid with AAD group $($_.PrincipalObjectId)"
-        Remove-AdminFlowOwnerRole -EnvironmentName $global:PowerAppsAdminEnvironmentId -flowname $flowname -roleid $_.RoleId | out-null
+        Remove-AdminFlowOwnerRole -EnvironmentName $adminEnvironmentId -flowname $flowname -roleid $_.RoleId | out-null
     }
 
 }

@@ -203,5 +203,250 @@
             Source = 'Set-DataverseSolution'
             Reason = 'An empty local command stub for Pester mocks; it performs no Dataverse request or mutation.'
         }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$ModulePath'
+            Reason = 'The fork-owned validation worker receives live worker inputs through Start-ThreadJob ArgumentList; Using scope would serialize the module path contract unnecessarily.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$ValidationPath'
+            Reason = 'The fork-owned validation worker receives live worker inputs through Start-ThreadJob ArgumentList; Using scope would bypass the explicit worker contract.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Client'
+            Reason = 'The fork-owned validation worker receives a live Dataverse connection through Start-ThreadJob ArgumentList; Using scope could serialize or disconnect the client.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$SourceContext'
+            Reason = 'The fork-owned validation worker receives its immutable validation context through Start-ThreadJob ArgumentList; this explicit contract is required for isolated workers.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Rule'
+            Reason = 'The fork-owned validation worker receives each rule through Start-ThreadJob ArgumentList so the scheduler can control rule ordering and concurrency.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Budget'
+            Reason = 'The fork-owned validation worker receives the shared operation budget through Start-ThreadJob ArgumentList to coordinate Dataverse request limits.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Cancellation'
+            Reason = 'The fork-owned validation worker receives the cancellation token through Start-ThreadJob ArgumentList to preserve cooperative shutdown behavior.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Events'
+            Reason = 'The fork-owned validation worker receives the event sink through Start-ThreadJob ArgumentList so worker diagnostics remain correlated.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$LogDirectory'
+            Reason = 'The fork-owned validation worker receives its log directory through Start-ThreadJob ArgumentList to keep worker reports isolated.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $PersonalAccessToken -AsPlainText -Force'
+            Reason = 'The fork-owned migration bridge adapts a user-supplied Azure DevOps PAT to the existing SecureString API; the plaintext exists only at the legacy API boundary and is not hardcoded.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $adoAuthResult.AccessToken -AsPlainText -Force'
+            Reason = 'The fork-owned migration bridge adapts the OAuth access token returned by the legacy Azure DevOps API to the existing SecureString API boundary.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $patPlainText -AsPlainText -Force'
+            Reason = 'The fork-owned migration bridge adapts a legacy PAT value to the existing SecureString API boundary; no credential is embedded in source.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Get-AuthToken'
+            Source = '$ClientId'
+            Reason = 'The fork-owned migration token worker receives authentication values through its existing runspace argument contract; Using scope would change legacy token acquisition behavior.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Get-AuthToken'
+            Source = '$Authority'
+            Reason = 'The fork-owned migration token worker receives authentication values through its existing runspace argument contract; Using scope would change legacy token acquisition behavior.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-SolutionsSection'
+            Source = 'Build-SolutionsSection'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-AssetsSection'
+            Source = 'Build-AssetsSection'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-HooksSection'
+            Source = 'Build-HooksSection'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-ScriptDependenciesSection'
+            Source = 'Build-ScriptDependenciesSection'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-LegacySection'
+            Source = 'Build-LegacySection'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'ConvertTo-PowerShellLiteral'
+            Source = 'ConvertTo-PowerShellLiteral'
+            Reason = 'Legacy fork migration formatter retained for compatibility with existing migration callers; documenting it is deferred to the dedicated migration-tool audit.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'The fork-owned executable migration entry point must begin with an unprefixed shebang so pwsh can execute it directly; adding a BOM would break that legacy command-line contract.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-github-repo.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'The fork-owned executable migration entry point must begin with an unprefixed shebang so pwsh can execute it directly; adding a BOM would break that legacy command-line contract.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Cleanup-TestArtifacts'
+            Source = 'Cleanup-TestArtifacts'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestPublishers'
+            Source = 'Setup-TestPublishers'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestSolutions'
+            Source = 'Setup-TestSolutions'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestTables'
+            Source = 'Setup-TestTables'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestEnvironmentVariables'
+            Source = 'Setup-TestEnvironmentVariables'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestComponents'
+            Source = 'Setup-TestComponents'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Cleanup-TestArtifacts'
+            Source = 'Cleanup-TestArtifacts'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestPublishers'
+            Source = 'Setup-TestPublishers'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestSolutions'
+            Source = 'Setup-TestSolutions'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestTables'
+            Source = 'Setup-TestTables'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestEnvironmentVariables'
+            Source = 'Setup-TestEnvironmentVariables'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestComponents'
+            Source = 'Setup-TestComponents'
+            Reason = 'Fork-owned Dataverse validation harness retains its established command names because setup documentation and operator scripts invoke these legacy test lifecycle commands.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'Fork-owned executable validation harness retains its unprefixed shebang for direct pwsh invocation; adding a BOM would break that command-line contract.'
+        }
     )
 }

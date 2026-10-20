@@ -1,6 +1,6 @@
 
 function ensureAppUser([guid] $applicationid, [string] $businessunitname, [string[]] $rolenames) {
-    
+
     $connection = getGlobalCrmConnection
 
     # Finds existing team with the specified name/ID in the given BU.
@@ -9,7 +9,7 @@ function ensureAppUser([guid] $applicationid, [string] $businessunitname, [strin
         $query.ColumnSet.AddColumns("applicationid")
         $query.ColumnSet.AddColumns("fullname")
         $query.Criteria.AddCondition("applicationid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $applicationid)
-        
+
             $user = $connection.RetrieveMultiple($query).Entities | select-object -first 1
         return $user
     }
@@ -43,7 +43,7 @@ function ensureAppUser([guid] $applicationid, [string] $businessunitname, [strin
         $rolesidstoadd | foreach-object {
             $rolerefstoadd.Add((new-object Microsoft.Xrm.Sdk.EntityReference "role", $_))
         }
-        
+
         $connection.Associate("systemuser", $user.Id, $rolereln, $rolerefstoadd)
     }
 

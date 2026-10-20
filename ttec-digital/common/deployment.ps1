@@ -20,7 +20,7 @@ function deleteUnneededCallbackRegistrations() {
 # Updates settings in "organization" table if any need to be changed.
 # Settings values should have key matching the columns in that table and value understood by the Xrm.Sdk.
 function deployOrgSettings([Parameter(Mandatory)][hashtable] $settings) {
-    
+
     if ($settings.Count -eq 0) {
         return
     }
@@ -74,7 +74,7 @@ function getInstalledSolutions() {
 
     $query = new-object Microsoft.Xrm.Sdk.Query.QueryExpression "solution"
     $query.ColumnSet = new-object Microsoft.Xrm.Sdk.Query.ColumnSet $true
-    
+
     getQueryResults $query | foreach-object {
         [PSCustomObject] @{
             "Unique Name" = $_["uniquename"];
@@ -115,7 +115,7 @@ function removeUnmanagedCustomisations(
             $tablename = $_.msdyn_name
             getRestQueryResults -query "msdyn_solutioncomponentsummaries?`$filter=(msdyn_solutionid eq ${solutionid}) and (msdyn_componenttype eq 2 or msdyn_componenttype eq 10 or msdyn_componenttype eq 3 or msdyn_componenttype eq 14 or msdyn_componenttype eq 60 or msdyn_componenttype eq 26 or msdyn_componenttype eq 59 or msdyn_componenttype eq 29 or msdyn_componenttype eq 22) and (msdyn_primaryentityname eq '$tablename')"
         }
-   
+
     } | where-object { $_.msdyn_ismanaged -eq "1" -and $_.msdyn_hasactivecustomization } | foreach-object {
         $componentid = [guid] $_.msdyn_objectid
         $componenttype = $_.msdyn_componentlogicalname
@@ -128,12 +128,12 @@ function removeUnmanagedCustomisations(
         $query.Criteria.AddCondition("msdyn_solutionname", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, "Active");
 
         $query.Criteria.AddCondition("msdyn_solutioncomponentname", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $componenttype);
-        
-        
+
+
         $query.Criteria.AddCondition("msdyn_componentid", [Microsoft.Xrm.Sdk.Query.ConditionOperator]::Equal, $componentid);
         $query.ColumnSet = new-object Microsoft.Xrm.Sdk.Query.ColumnSet $true
-    
-        if ( (getQueryResults $query | Where-Object { $_ -and $_["msdyn_overwritetime"].Year -eq 1900 } )) {       
+
+        if ( (getQueryResults $query | Where-Object { $_ -and $_["msdyn_overwritetime"].Year -eq 1900 } )) {
             write-warning "Removing unmanaged customisations for $componenttype $componentid $($_.msdyn_name) '$($_.msdyn_displayname)'"
 
             $request = New-Object Microsoft.Xrm.Sdk.OrganizationRequest "RemoveActiveCustomizations"
@@ -190,7 +190,7 @@ function replaceEnvVarPlaceholders([Parameter(Mandatory)][string]$template) {
             }
 
             return [Environment]::GetEnvironmentVariable($name);
-        }, [Text.RegularExpressions.RegexOptions]::Multiline)   
+        }, [Text.RegularExpressions.RegexOptions]::Multiline)
 }
 
 # Replaces $(Placeholders) in a template string with values from the config hashtable.
@@ -205,7 +205,7 @@ function replaceConfigPlaceholders([Parameter(Mandatory)][string]$template, [Par
             }
 
             return $config[$name];
-        }, [Text.RegularExpressions.RegexOptions]::Multiline)   
+        }, [Text.RegularExpressions.RegexOptions]::Multiline)
 }
 
 # Takes a template portal deployment profile containing $(Placeholders) and substitutes in values from the provided config hash.
@@ -252,10 +252,10 @@ function deployPortal([Parameter(Mandatory)][string]$path, [Parameter(Mandatory)
 function deployDatasetDeleteUnneededRecords([Parameter(Mandatory)][string]$path) {
 
     if ($path.EndsWith(".zip")) {
-        
+
         add-type -assembly System.IO.Compression.FileSystem
         $zipfile = [System.IO.Compression.ZipFile]::Open($path, "Read")
-    
+
         try {
             $stream = $zipfile.GetEntry("data.xml").Open()
             $reader = new-object System.IO.StreamReader $stream
@@ -268,7 +268,7 @@ function deployDatasetDeleteUnneededRecords([Parameter(Mandatory)][string]$path)
         finally {
             $zipfile.Dispose()
         }
-        
+
     }
     else {
         $dataxml = [xml] (get-content -raw $path/data.xml)
@@ -300,14 +300,14 @@ function deployPortalDeleteUnneededRecords([Parameter(Mandatory)][string]$path) 
 
     #Brute force way of parsing the YAML. YAML.NET was much too slow.
     $recordsbytable = (get-content $manifestfile | foreach-object {
-  
-            $newtablename = $_ | select-string -pattern "^(\w+):" -AllMatches | foreach-object -MemberName Matches | foreach-object { $_.Groups[1].Value }  
-  
+
+            $newtablename = $_ | select-string -pattern "^(\w+):" -AllMatches | foreach-object -MemberName Matches | foreach-object { $_.Groups[1].Value }
+
             if ($newtablename) {
                 $tablename = $newtablename
             }
             else {
-                $recordid = $_ | select-string -pattern "- RecordId: (.+)" -AllMatches | foreach-object -MemberName Matches | foreach-object { $_.Groups[1].Value }  
+                $recordid = $_ | select-string -pattern "- RecordId: (.+)" -AllMatches | foreach-object -MemberName Matches | foreach-object { $_.Groups[1].Value }
                 if ($recordid -and $excludetables -notcontains $tablename) {
                     [PSCustomObject] (@{Table = $tablename; Id = [guid] $recordid })
                 }
@@ -347,8 +347,12 @@ function deleteAllRecordsExcept([Parameter(Mandatory)][string] $tablename, [Para
     }
 }
 
-function deploySolutionSet([string[]] $solutionfiles, [string] $description) {
-        
+function deploySolutionSet(
+    [string[]] $solutionfiles,
+    [string] $description,
+    [int] $importTimeoutSeconds = 10800
+) {
+
     $connectionReferences = @{}
 
     # Find all env vars prefixed with "DataverseConnRef_" to set as connection references
@@ -364,13 +368,13 @@ function deploySolutionSet([string[]] $solutionfiles, [string] $description) {
         $envVarName = $_.Name.Substring(16) # Remove "DataverseEnvVar_" prefix
         $environmentVariables[$envVarName] = $_.Value
     }
-    
+
     Write-Host "##[section]Installing solutions"
     $connectionReferences.GetEnumerator() | ForEach-Object {
-        Write-Host "##[debug]Connection Reference: $($_.Key) = $($_.Value)"
+        Write-Host "##[debug]Connection Reference configured: $($_.Key)"
     }
     $environmentVariables.GetEnumerator() | ForEach-Object {
-        Write-Host "##[debug]Environment Variable: $($_.Key) = $($_.Value)"
+        Write-Host "##[debug]Environment Variable configured: $($_.Key)"
     }
     foreach ($solutionfile in $solutionfiles) {
         Write-Host "##[group]Installing $description solution from file: $solutionfile"
@@ -379,7 +383,7 @@ function deploySolutionSet([string[]] $solutionfiles, [string] $description) {
             -Verbose `
             -InFile $solutionfile `
             -Mode "Auto" `
-            -TimeoutSeconds 600 `
+            -TimeoutSeconds $importTimeoutSeconds `
             -EnvironmentVariables $environmentVariables `
             -ConnectionReferences $connectionReferences `
             -OverwriteUnmanagedCustomizations `
@@ -390,7 +394,7 @@ function deploySolutionSet([string[]] $solutionfiles, [string] $description) {
 
 
 # Deploys the configuration migration tool dataset provided as a zip file or data folder
-function deployDataset([Parameter(Mandatory)][string] $datapath) {   
+function deployDataset([Parameter(Mandatory)][string] $datapath) {
     write-host "##[group]Deploying data set from $datapath"
 
     if (-not (test-path $datapath)) {
@@ -398,7 +402,7 @@ function deployDataset([Parameter(Mandatory)][string] $datapath) {
         $datapath = join-path (split-path $datapath) ([IO.Path]::GetFileNameWithoutExtension($datapath))
     }
 
-    pac data import --data $datapath --verbose 
+    pac data import --data $datapath --verbose
     if (-not $? -or $LASTEXITCODE -ne 0) {
         throw "PAC DATA IMPORT failed"
     }
