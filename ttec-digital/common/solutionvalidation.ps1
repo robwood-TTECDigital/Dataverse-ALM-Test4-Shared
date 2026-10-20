@@ -227,7 +227,7 @@ function getComponentNames(
 
 # Function to detect Git platform and build documentation link
 function Get-ValidationRuleDocLink([string]$ruleType) {
-    $docRelativePath = "ttec-digital/validationrules/$ruleType.md"
+    $docRelativePath = "ttec-digital/docs/validation-rules/$ruleType.md"
 
     # Try to get the git remote URL
     try {

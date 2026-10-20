@@ -23,6 +23,26 @@ Describe 'ALM configuration loading' {
         $config.buildVersion.default | Should -Be '1.0'
         $config.buildVersion.branches | Should -BeOfType [hashtable]
     }
+
+    It 'ships defaults and template entries for fork-owned hook settings' {
+        $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
+        $template = Import-PowerShellDataFile (Join-Path $repoRoot 'copy-to-your-repo/alm-config.psd1')
+        $forkSettings = @(
+            'DataSets', 'DefaultEnvVarValues', 'DependencySolutions',
+            'ExternalDependencySolutionNames', 'IgnoreSolutions', 'OrgSettings',
+            'PostDependencySolutions', 'AadGroupTeams',
+            'AccessTeams', 'ApplicationUsers', 'BuDefaultTeams', 'CanvasAppSharing',
+            'FlowSharing', 'OwnerTeams', 'PluginSteps', 'Portals', 'SynapseFolders',
+            'SynapseRepositoryUrl', 'SynapseLinkedServicesInclude',
+            'SynapseLinkedServicesExclude', 'SynapseManagedPrivateEndpoints',
+            'validation'
+        )
+
+        foreach ($setting in $forkSettings) {
+            $defaults.ContainsKey($setting) | Should -BeTrue -Because "$setting must have a shared default"
+            $template.ContainsKey($setting) | Should -BeTrue -Because "$setting must be exposed in the copied configuration"
+        }
+    }
 }
 
 Describe 'Configured setting maps' {

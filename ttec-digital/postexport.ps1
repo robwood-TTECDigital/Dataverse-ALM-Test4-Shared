@@ -89,15 +89,6 @@ if ($config.ContainsKey("Portals")) {
 git -C $sourceRoot add -A portals/
 if (-not $? -or $LASTEXITCODE -ne 0) { throw "git add failed"; }
 
-if ($config.Contains("PostExportScript") -and $config.PostExportScript) {
-    $postExportScriptPath = Join-Path $sourceRoot ([string]$config.PostExportScript)
-    if (-not (Test-Path -LiteralPath $postExportScriptPath -PathType Leaf)) {
-        throw "Configured post-export script was not found: $postExportScriptPath"
-    }
-    & $postExportScriptPath
-}
-
-
 synapse_export -config $config
 
 

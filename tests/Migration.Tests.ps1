@@ -12,7 +12,7 @@ Describe 'Legacy configuration migration' {
             '@{'
             "    Solutions = @('LegacySolution')"
             '    SolutionOptions = @{ LegacySolution = @{ DeployUnmanaged = $true } }'
-            '    PostExportScript = $null'
+            "    PostExportScript = 'scripts/post-export.ps1'"
             "    LegacyValue = 'preserved'"
             '}'
         ) | Set-Content -LiteralPath $legacyPath
@@ -29,6 +29,8 @@ Describe 'Legacy configuration migration' {
         $config.solutions[0].name | Should -Be 'LegacySolution'
         $config.solutions[0].deployUnmanaged | Should -BeTrue
         $config.LegacyValue | Should -Be 'preserved'
+        $config.hooks.postExport | Should -Contain 'scripts/post-export.ps1'
+        $config.ContainsKey('PostExportScript') | Should -BeFalse
         Test-Path (Join-Path $workspace 'almconfig.ps1.migrated') | Should -BeTrue
 
         $topLevelKeys = @(

@@ -112,21 +112,18 @@ Describe 'Build artifacts and solution-check helpers' {
         Mock Invoke-TestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.13.1+build pac' }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-TestPac' } } -ParameterFilter { $Name -eq 'pac' }
         Mock Invoke-TestPac { $global:LASTEXITCODE = 0; 'Critical: 0'; 'High: 1'; 'Low: 2' }
-        # Fork defaults intentionally include Dataverse-dependent postBuild hooks;
-        # build unit tests isolate packing/checker behavior without provisioning a client.
-        Mock Invoke-Hook {}
         # Most cases keep work in Pester's runspace so mocks remain visible. Both overlap cases
         # opt out and supply an importable pack module to exercise actual worker isolation.
         Mock ForEach-Object {
-            if ($env:ALM_BUILD_TEST_REAL_PARALLEL -eq 'true') {
-                $InputObject | Microsoft.PowerShell.Core\ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel $Parallel
+            $forEachObjectCommand = Microsoft.PowerShell.Core\Get-Command -Name 'ForEach-Object' -CommandType Cmdlet
+            $InputObject | & $forEachObjectCommand -Process $Process
+        } -ParameterFilter { $null -eq $Parallel }
+        Mock ForEach-Object {
+            if ($null -ne $Parallel -and $null -ne $InputObject -and $InputObject.PSObject.Properties['CommandName']) {
+                $env:ALM_BUILD_TEST_PARALLEL_COMMAND_STAGE = 'true'
             }
-            else {
-                if ($null -ne $Parallel -and $null -ne $InputObject -and $InputObject.PSObject.Properties['CommandName']) {
-                    $env:ALM_BUILD_TEST_PARALLEL_COMMAND_STAGE = 'true'
-                }
-                $InputObject | Microsoft.PowerShell.Core\ForEach-Object -Process $Parallel
-            }
+            $forEachObjectCommand = Microsoft.PowerShell.Core\Get-Command -Name 'ForEach-Object' -CommandType Cmdlet
+            $InputObject | & $forEachObjectCommand -Process $Parallel
         } -ParameterFilter { $null -ne $Parallel -and $env:ALM_BUILD_TEST_REAL_PARALLEL -ne 'true' }
     }
 
@@ -283,9 +280,7 @@ Describe 'Build artifacts and solution-check helpers' {
                         throw "Solution content claim observed an unpatched $($packageName): $entries"
                     }
                 }
-                finally {
-                    $archive.Dispose()
-                }
+                finally { $archive.Dispose() }
             }
         }
         $env:ALM_BUILD_TEST_PACKAGE_DIRECTORY = Join-Path $script:artifactDirectory 'solutions'

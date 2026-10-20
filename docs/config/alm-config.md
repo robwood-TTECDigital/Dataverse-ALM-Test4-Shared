@@ -43,13 +43,14 @@ The supplied template additionally includes the `data` asset and example data ho
 | `solutions` | Array of hashtables | Empty in the template; list solutions in dependency order. |
 | `buildVersion` | Hashtable | Shared default is `'1.0'`; optional MAJOR.MINOR override and full-branch overrides. |
 | `export` | Hashtable | Up to two concurrent package exports; a shared limit of four operations with version updates. |
+| `build` | Hashtable | Build commands and solution packing run in parallel; up to two at once, with version collision checking enabled. |
 | `assets` | Array of paths | `@('data')` in the template. |
 | `hooks` | Hashtable of script-path arrays | Empty except the template's `postExport` and `postDeploy` data hooks. |
-| `scriptDependencies` | Hashtable of module names and versions | `Rnwood.Dataverse.Data.PowerShell = '3.2.0'`. |
 | `organizationSettings`, `orgDbOrgSettings` | Hashtable of setting names to values | Empty; applied before deployment. |
 | `postDeployOrganizationSettings`, `postDeployOrgDbOrgSettings` | Hashtable of setting names to values | Empty; applied after the `postDeploy` hook. |
 | `powerPlatformSettings` | Hashtable of setting names to values | Empty; patched before deployment through the Power Platform API. |
 | `postDeployPowerPlatformSettings` | Hashtable of setting names to values | Empty; patched after the `postDeploy` hook. |
+| `scriptDependencies` | Hashtable of module names and versions | `Rnwood.Dataverse.Data.PowerShell = '3.2.0'`. |
 | `pacCliVersion` | String | `'2.13.1'`. |
 | `nodeVersion` | String | `'22'`; used only by BUILD/IMPORT when at least one solution configures `codeApps`. |
 | `importTimeoutSeconds` | Number of seconds | `10800` per import. |
@@ -397,6 +398,7 @@ concurrently, limited by `build.maxParallel`; set an individual command's
 `parallel = $false` to run it sequentially. Groups execute in order, and all
 commands finish before solution packing begins. When `build.parallel = $false`,
 all commands run sequentially in solution and mapping order.
+
 After packing and solution checks, BUILD fingerprints the resulting managed and
 unmanaged package contents. A previously claimed version is accepted only when
 the package fingerprint matches, so generated mapped output is covered even when

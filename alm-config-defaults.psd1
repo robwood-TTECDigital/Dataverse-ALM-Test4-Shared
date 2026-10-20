@@ -27,7 +27,7 @@
     }
 
     scriptDependencies = @{
-        "Rnwood.Dataverse.Data.PowerShell" = "3.2.1"
+        "Rnwood.Dataverse.Data.PowerShell" = "3.2.0"
     }
 
     # Power Apps CLI version used by pipeline scripts.
@@ -55,7 +55,7 @@
         branches = @{}
     }
 
-    # Package exports and version updates share a budget; parallel per-solution hooks can join it.
+    # Package exports and version updates share an operation budget; hooks do not.
     # Both integer limits accept 1..8; parallel = $false retains sequential export.
     export = @{
         parallel = $true
@@ -63,13 +63,9 @@
         maxConcurrentOperations = 4
     }
 
-    validation = @{
-        parallel = $true
-        maxParallel = 4
-    }
-
     # Build-command and packing stages each use this limit (1..8), independently
     # of checker concurrency. All build commands finish before packing starts.
+    # The content guard prevents different solution contents sharing one version.
     build = @{
         parallel = $true
         maxParallel = 2
@@ -102,4 +98,34 @@
         # Maximum number of solutions to check in parallel.
         maxParallel = 4
     }
+
+    # BEGIN TTEC Digital-specific configuration
+    # Empty values keep optional hook behavior inactive unless configured by a repository.
+    # LEGACY: DataSets, DefaultEnvVarValues, OrgSettings, and Portals remain for compatibility.
+    DataSets = @()
+    DefaultEnvVarValues = @{}
+    DependencySolutions = @()
+    ExternalDependencySolutionNames = @()
+    IgnoreSolutions = @()
+    OrgSettings = @{}
+    PostDependencySolutions = @()
+    AadGroupTeams = @()
+    AccessTeams = @()
+    ApplicationUsers = @()
+    BuDefaultTeams = @()
+    CanvasAppSharing = @()
+    FlowSharing = @()
+    OwnerTeams = @()
+    PluginSteps = @()
+    Portals = @{}
+    SynapseFolders = @()
+    SynapseRepositoryUrl = ''
+    SynapseLinkedServicesInclude = @()
+    SynapseLinkedServicesExclude = @()
+    SynapseManagedPrivateEndpoints = @()
+    validation = @{
+        parallel = $true
+        maxParallel = 4
+    }
+    # END TTEC Digital-specific configuration
 }

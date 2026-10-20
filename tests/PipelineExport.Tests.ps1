@@ -1,7 +1,6 @@
 BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $script:exportScript = Join-Path $repoRoot 'pipelines/scripts/export.ps1'
-    . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
     # Snapshot generated XML and mapping/pathspec calls inside the mocks: export deletes its
     # mapping files on return. Reset the shared capture below to isolate each regression case.
     if (-not ('AlmExportMappingTestCapture' -as [type])) {
@@ -43,7 +42,6 @@ public static class AlmExportMappingTestCapture
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Command', Justification = 'Mock command signature; Pester inspects these arguments.')]
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'RemainingArguments', Justification = 'The mapping regression mock inspects git pathspec arguments.')]
         param($Command, [Parameter(ValueFromRemainingArguments = $true)][string[]]$RemainingArguments)
-        $global:LASTEXITCODE = 0
     }
 }
 
@@ -56,7 +54,7 @@ Describe 'Export and version changes' {
         New-Item -ItemType Directory -Path $script:exportSource, $script:exportArtifacts, $script:exportTemp -Force | Out-Null
         # Sequential mode keeps Dataverse and reservation calls in Pester's mocked runspace.
         # The branch base maps to Major.Build, so 1.2.3.4 already matches the configured 1.3.
-        Set-Content (Join-Path $script:exportSource 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example' }); hooks = @{ parallelExportSolution = `$false; postExportSolution = `$false }; export = @{ parallel = `$false }; buildVersion = @{ default = '1.3'; branches = @{} } }"
+        Set-Content (Join-Path $script:exportSource 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example' }); hooks = @{}; export = @{ parallel = `$false }; buildVersion = @{ default = '1.3'; branches = @{} } }"
         Mock Export-DataverseSolution {
             if (-not [string]::IsNullOrWhiteSpace($MappingFile)) {
                 [AlmExportMappingTestCapture]::MappingPath = $MappingFile
@@ -73,9 +71,6 @@ Describe 'Export and version changes' {
         Mock Set-DataverseSolution {}
         Mock Register-AlmSolutionVersion { $Version }
         Mock git { ' M solutions/Example/Other/Solution.xml' }
-        # Fork defaults include a Dataverse-dependent postExport hook; export/version
-        # tests isolate orchestration and mapping behavior without provisioning a client.
-        Mock Invoke-Hook {}
         $script:capturedWarnings = @()
         [AlmExportMappingTestCapture]::MappingPath = $null
         [AlmExportMappingTestCapture]::MappingXml = $null
@@ -99,7 +94,7 @@ Describe 'Export and version changes' {
         Set-Content -LiteralPath (Join-Path $script:exportSource 'alm-config.psd1') -Value @'
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal') })
-    hooks = @{ parallelExportSolution = $false; postExportSolution = $false }
+    hooks = @{}
     export = @{ parallel = $false }
     buildVersion = @{ default = '1.3'; branches = @{} }
 }
@@ -133,7 +128,7 @@ Describe 'Export and version changes' {
             buildCommand = @{ name = 'Not run by export'; executable = 'missing-build-tool'; arguments = @() }
         })
     })
-    hooks = @{ parallelExportSolution = $false; postExportSolution = $false }
+    hooks = @{}
     export = @{ parallel = $false }
     buildVersion = @{ default = '1.3'; branches = @{} }
 }
@@ -163,7 +158,7 @@ Describe 'Export and version changes' {
             destination = 'PluginAssemblies/Example.dll'
         })
     })
-    hooks = @{ parallelExportSolution = $false; postExportSolution = $false }
+    hooks = @{}
     export = @{ parallel = $false }
     buildVersion = @{ default = '1.3'; branches = @{} }
 }
@@ -195,7 +190,7 @@ Describe 'Export and version changes' {
         @{ name = '$FirstName'; mappings = @(@{ type = 'FileToFile'; source = 'plugins/First.dll'; destination = 'First.dll' }) }
         @{ name = '$SecondName'; mappings = @(@{ type = 'FileToFile'; source = 'plugins/Second.dll'; destination = 'Second.dll' }) }
     )
-    hooks = @{ parallelExportSolution = `$false; postExportSolution = `$false }
+    hooks = @{}
     export = @{ parallel = `$false }
     buildVersion = @{ default = '1.3'; branches = @{} }
 }
@@ -223,7 +218,7 @@ Describe 'Export and version changes' {
             destination = 'PluginAssemblies/Example.dll'
         })
     })
-    hooks = @{ parallelExportSolution = $false; postExportSolution = $false }
+    hooks = @{}
     export = @{ parallel = $false }
     buildVersion = @{ default = '1.3'; branches = @{} }
 }
@@ -322,7 +317,7 @@ Describe 'Export and version changes' {
     }
 
     It 'does not warn when a non-default branch has an explicit version rule' {
-        Set-Content (Join-Path $script:exportSource 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example' }); hooks = @{ parallelExportSolution = `$false; postExportSolution = `$false }; export = @{ parallel = `$false }; buildVersion = @{ default = '1.3'; branches = @{ 'feature/new' = '2.0' } } }"
+        Set-Content (Join-Path $script:exportSource 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example' }); hooks = @{}; export = @{ parallel = `$false }; buildVersion = @{ default = '1.3'; branches = @{ 'feature/new' = '2.0' } } }"
         $null = & $script:exportScript -SourceDirectory $script:exportSource -ArtifactStagingDirectory $script:exportArtifacts -TempDirectory $script:exportTemp -BranchName 'feature/new' -DefaultBranchName main 3>&1 |
             ForEach-Object { if ($_ -is [System.Management.Automation.WarningRecord]) { $script:capturedWarnings += $_.Message } }
         $script:capturedWarnings.Count | Should -Be 0

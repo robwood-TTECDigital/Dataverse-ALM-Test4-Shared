@@ -77,9 +77,6 @@ Describe 'Deployment options' {
         Mock Import-DataverseSolution {}
         Mock Invoke-DataverseSolutionUpgrade {}
         Mock Publish-DataverseCustomizations {}
-        # Fork defaults include Dataverse-dependent deployment hooks; package and
-        # setting tests isolate deployment orchestration without a live default client.
-        Mock Invoke-Hook {}
         Mock Update-SolutionCodeAppPackage {}
         Mock Get-DataverseRecord {
             if ($TableName -eq 'systemuser') {

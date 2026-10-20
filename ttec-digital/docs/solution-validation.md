@@ -36,9 +36,9 @@ Validation can overlap solution exports, subject to the shared `export.maxConcur
 
 ## Available Validation Rules
 
-The framework includes multiple validation rules that check for specific issues in your solutions. Complete documentation for each rule, including what it checks and how to remediate issues, is available in the `ttec-digital/validationrules` folder.
+The framework includes multiple validation rules that check for specific issues in your solutions. Complete documentation for each rule, including what it checks and how to remediate issues, is available in the [validation-rule guides](validation-rules/).
 
-Each rule file includes both the PowerShell implementation (`.ps1`) and detailed documentation (`.md`) explaining:
+Rule implementations are in `ttec-digital/validationrules/`; their guides explain:
 - What the rule validates
 - Why the check is important
 - How to fix violations
@@ -334,6 +334,6 @@ If validation behavior seems unexpected, check for multiple configurations. Comp
 
 ## See Also
 
-- Individual validation rule documentation in `ttec-digital/validationrules/`
+- [Individual validation rule guides](validation-rules/)
 - [ALM Configuration Guide](../../docs/config/alm-config.md)
 - [Solution Component Types Reference](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/solutioncomponent-entity)

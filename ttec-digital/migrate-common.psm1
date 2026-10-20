@@ -139,7 +139,7 @@ function Build-LegacySection {
 
     # Write other migrated keys
     $otherKeys = @($LegacyKeys | Where-Object {
-            $_ -notin @('solutions', 'assets', 'hooks', 'scriptDependencies') -and
+            $_ -notin @('solutions', 'assets', 'hooks', 'scriptDependencies', 'PostExportScript') -and
             $_ -notin $FrameworkKeys
         })
 

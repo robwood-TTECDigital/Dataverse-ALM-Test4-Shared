@@ -116,11 +116,11 @@ This will:
 
 Each validation rule error now includes a link to detailed documentation. Links are automatically generated based on the Git remote:
 
-- **Azure DevOps**: `https://dev.azure.com/{org}/{project}/_git/{repo}?path=/ttec-digital/validationrules/{rule}.md&version=GB{branch}`
-- **GitHub**: `https://github.com/{owner}/{repo}/blob/{branch}/ttec-digital/validationrules/{rule}.md`
+- **Azure DevOps**: `https://dev.azure.com/{org}/{project}/_git/{repo}?path=/ttec-digital/docs/validation-rules/{rule}.md&version=GB{branch}`
+- **GitHub**: `https://github.com/{owner}/{repo}/blob/{branch}/ttec-digital/docs/validation-rules/{rule}.md`
 
 ## Adding New Tests
 
 1. Add the test scenario setup in `Setup-TestComponents` function
 2. Update the test expectations in `Run-ValidationTests` function
-3. Add documentation in `ttec-digital/validationrules/` for any new rules
+3. Add a guide in `ttec-digital/docs/validation-rules/` for any new rules
