@@ -27,7 +27,9 @@
     }
 
     scriptDependencies = @{
-        "Rnwood.Dataverse.Data.PowerShell" = "3.2.0"
+        # 3.4.0 fixes connection handling in the export comparison cmdlets.
+        "Rnwood.Dataverse.Data.PowerShell" = "3.4.0"
+        "Az.Accounts" = "5.5.3"
     }
 
     # Power Apps CLI version used by pipeline scripts.
