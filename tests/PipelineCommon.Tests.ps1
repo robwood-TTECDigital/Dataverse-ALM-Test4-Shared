@@ -43,6 +43,11 @@ Describe 'ALM configuration loading' {
             $template.ContainsKey($setting) | Should -BeTrue -Because "$setting must be exposed in the copied configuration"
         }
     }
+
+    It 'pins Az.Accounts to a Dataverse-compatible version' {
+        $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
+        $defaults.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'
+    }
 }
 
 Describe 'Configured setting maps' {
