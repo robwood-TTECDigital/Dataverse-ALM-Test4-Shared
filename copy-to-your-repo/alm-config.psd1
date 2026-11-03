@@ -114,6 +114,10 @@
     # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
     organizationSettings = @{}
 
+    # Azure management partner linked to the Azure identity before solution imports.
+    # Set to an empty string to disable partner-link management.
+    partnerId = 6479631
+
     # Organization-table columns applied after the postDeploy hook.
     # Example: @{ IsCustomControlsInCanvasAppsEnabled = $false }
     # Schema names are normalized to the lowercase logical names required by the Dataverse settings cmdlet.

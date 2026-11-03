@@ -12,6 +12,7 @@
         )
         postExportSolution = @()
         preDeploy  = @(
+            "[alm]/ttec-digital/predeploy-management-partner.ps1"
             "[alm]/ttec-digital/predeploy.ps1"
         )
         postDeploy = @(
@@ -31,7 +32,11 @@
         "Rnwood.Dataverse.Data.PowerShell" = "3.4.0"
         # Pin Az.Accounts to avoid Azure assembly conflicts with Dataverse PowerShell.
         "Az.Accounts" = "5.5.0"
+        "Az.ManagementPartner" = "0.8.0"
     }
+
+    # Azure MPN partner linked to the identity used for deployment. Set to '' to disable.
+    partnerId = 6479631
 
     # Power Apps CLI version used by pipeline scripts.
     # Supports: '' (latest stable), 'prerelease', or an exact version.

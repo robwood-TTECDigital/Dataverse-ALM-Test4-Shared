@@ -27,6 +27,16 @@ Describe 'ALM configuration loading' {
     It 'ships defaults and template entries for fork-owned hook settings' {
         $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
         $template = Import-PowerShellDataFile (Join-Path $repoRoot 'copy-to-your-repo/alm-config.psd1')
+        $partnerHook = '[alm]/ttec-digital/predeploy-management-partner.ps1'
+        $defaults.partnerId | Should -Be 6479631
+        $defaults.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'
+        $defaults.scriptDependencies['Az.ManagementPartner'] | Should -Be '0.8.0'
+        $defaults.scriptDependencies['Rnwood.Dataverse.Data.PowerShell'] | Should -Be '3.4.0'
+        $template.partnerId | Should -Be 6479631
+        $defaults.hooks.preDeploy[0] | Should -Be $partnerHook
+        $defaults.hooks.preDeploy | Should -Contain '[alm]/ttec-digital/predeploy.ps1'
+        $defaults.hooks.postDeploy | Should -Contain '[alm]/ttec-digital/postdeploy.ps1'
+        $defaults.hooks.postDeploy | Should -Not -Contain $partnerHook
         $forkSettings = @(
             'DataSets', 'DefaultEnvVarValues', 'DependencySolutions',
             'ExternalDependencySolutionNames', 'IgnoreSolutions', 'OrgSettings',

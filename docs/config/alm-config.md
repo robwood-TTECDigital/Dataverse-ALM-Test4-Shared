@@ -50,7 +50,8 @@ The supplied template additionally includes the `data` asset and example data ho
 | `postDeployOrganizationSettings`, `postDeployOrgDbOrgSettings` | Hashtable of setting names to values | Empty; applied after the `postDeploy` hook. |
 | `powerPlatformSettings` | Hashtable of setting names to values | Empty; patched before deployment through the Power Platform API. |
 | `postDeployPowerPlatformSettings` | Hashtable of setting names to values | Empty; patched after the `postDeploy` hook. |
-| `scriptDependencies` | Hashtable of module names and versions | `Az.Accounts = '5.5.0'` (pinned to avoid Azure assembly conflicts with Dataverse PowerShell); `Rnwood.Dataverse.Data.PowerShell = '3.4.0'`. |
+| `partnerId` | Numeric Azure management partner ID, or empty to disable | `6479631`; the shared preDeploy hook links the deployment identity to this Azure MPN partner. Set to `''` to disable. |
+| `scriptDependencies` | Hashtable of module names and versions | `Az.Accounts = '5.5.0'` (pinned to avoid Azure assembly conflicts with Dataverse PowerShell); `Az.ManagementPartner = '0.8.0'`; `Rnwood.Dataverse.Data.PowerShell = '3.4.0'`. |
 | `pacCliVersion` | String | `'2.13.1'`. |
 | `nodeVersion` | String | `'22'`; used only by BUILD/IMPORT when at least one solution configures `codeApps`. |
 | `importTimeoutSeconds` | Number of seconds | `10800` per import. |
@@ -58,6 +59,16 @@ The supplied template additionally includes the `data` asset and example data ho
 | `solutionCheck` | Hashtable | Disabled; full settings below. |
 
 ## Configuration Sections
+
+### Azure Management Partner
+
+The shared default `partnerId` is `6479631`. During deployment, ALM4Dataverse
+uses the [Az.ManagementPartner module](https://learn.microsoft.com/en-us/powershell/module/az.managementpartner/)
+to create the link when none exists or update it when the current link has a
+different ID from the shared `preDeploy` hook, before solution imports. A
+matching link is left unchanged. Set `partnerId = ''` to skip partner-link
+management. Azure login must already be established in the deployment process,
+and the identity must be authorized to manage its partner association.
 
 ### Organization Settings
 
@@ -436,6 +447,10 @@ Hook scripts are executed at various stages of the build, export, and deployment
 Scripts can use the built-in `Rnwood.Dataverse.Data.PowerShell` PowerShell module to complete a wide range of activities. [See the project site](https://github.com/ALM4Dataverse/Rnwood.Dataverse.Data.PowerShell) for full documentation. The current environment is automatically set to the target environment.
 
 You can also include any other PowerShell module from the [PowerShell Gallery](https://powershellgallery.com) by including it in the `scriptDependencies` section. See below.
+
+The shared TTEC deployment hook uses `partnerId` before solution imports to create
+or update the Azure MPN association for the signed-in deployment identity. It leaves
+an existing matching association unchanged; set `partnerId = ''` to disable it.
 
 Example hooks:
 

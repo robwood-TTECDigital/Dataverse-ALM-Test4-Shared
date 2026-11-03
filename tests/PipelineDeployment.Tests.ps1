@@ -63,6 +63,7 @@ BeforeAll {
     solutions = @(@{ name = 'Example'; $Settings })
     build = @{ parallel = `$false; versionCollisionGuard = $versionCollisionGuardLiteral }
     hooks = @{}
+    partnerId = ''
 }
 "@
     }
@@ -78,6 +79,7 @@ Describe 'Deployment options' {
         Mock Invoke-DataverseSolutionUpgrade {}
         Mock Publish-DataverseCustomizations {}
         Mock Update-SolutionCodeAppPackage {}
+        Mock Invoke-Hook {}
         Mock Get-DataverseRecord {
             if ($TableName -eq 'systemuser') {
                 return @{ fullname = 'Service Account'; Id = 'user-id' }
@@ -366,8 +368,11 @@ Describe 'Deployment options' {
             if ($Name -eq 'Az.Accounts') {
                 return [pscustomobject]@{ Version = [version]'5.5.0'; PrivateData = @{ PSData = @{} } }
             }
+            if ($Name -eq 'Az.ManagementPartner') {
+                return [pscustomobject]@{ Version = [version]'0.8.0'; PrivateData = @{ PSData = @{} } }
+            }
             [pscustomobject]@{ Version = [version]'3.0.4'; PrivateData = @{ PSData = @{ Prerelease = 'preview.1' } } }
-        } -ParameterFilter { $Name -in @('Az.Accounts', 'Rnwood.Dataverse.Data.PowerShell') }
+        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.ManagementPartner', 'Rnwood.Dataverse.Data.PowerShell') }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-DeploymentTestDotnet' } } -ParameterFilter { $Name -eq 'dotnet' }
         Mock Test-Path { $true } -ParameterFilter { $Path -match '[\\/]\.alm4dataverse[\\/]tools$' }
         Mock Invoke-DeploymentTestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.13.1 pac' }
