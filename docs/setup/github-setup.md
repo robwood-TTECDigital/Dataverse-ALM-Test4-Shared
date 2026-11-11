@@ -49,6 +49,11 @@ Setup signs in, selects or creates the application repository, selects solutions
 dependency order, and configures development and deployment environments. It prompts
 for application identities/authentication and process-owner accounts, generates caller
 workflows, and offers shared BUILD deployment validation with an optional baseline source.
+Existing repository choices include repositories owned by your account, available through
+an organization, or shared with you as a collaborator. An existing repository can be
+empty; setup creates its initial branch and commit when publishing the generated files.
+When creating a shared workflow repository, setup prompts for an owner and defaults to
+the owner of the selected application repository.
 
 > [!IMPORTANT]
 > Verify plan compatibility and the generated protection rules. Setup selects
@@ -59,11 +64,12 @@ workflows, and offers shared BUILD deployment validation with an optional baseli
 > out-of-the-box configuration.
 
 Re-running setup can update generated files. Existing `secrets-json` mappings, including
-separate deployment-stage mappings, are preserved by the updater. Review the resulting
-diff and stored settings; do not assume every local workflow customization is preserved.
+separate deployment-stage mappings, `AGENTS.md` and files under `data/` are preserved.
+Review the resulting diff and stored settings; other local workflow customizations can be
+overwritten (see [re-running setup](../usage/updating.md#re-run-setup-carefully)).
 GitHub cannot reveal existing secret values for automatic relocation.
 
-For `TenantId`, `UseDeviceAuthentication`, and `ALM4DataverseRef`, see
+To select a tenant (`TenantId`) or shared code ref (`ALM4DataverseRef`), see
 [setup parameters](../config/pipelines.md#setup-script-parameters). Released scripts
 embed their helpers; raw repository scripts need the adjacent files in this repository.
 
@@ -162,11 +168,12 @@ it to a named stage. The `build-run-name` selector can be an exact Release tag, 
 name, or numeric BUILD run ID; blank means the latest successful BUILD from the selected
 branch. For promotion, use an explicit identity so a newer build is not selected by accident.
 
-### Deployment Gates For GitHub Free
+### Manual Gate-Tag Promotion
 
-`manual-gate-tag` is the alternative when required reviewers are unavailable, including
-private Pro/Team repositories. The name of this section is retained for existing links;
-the [private-Free environment restriction](#github-licence-limitations) still applies.
+`manual-gate-tag` is the alternative when required reviewers are unavailable, such as
+private Pro/Team repositories. It does not make private GitHub Free repositories work:
+the supplied jobs still need GitHub environments, which private Free repositories
+lack. See [plan limitations](#github-licence-limitations).
 
 To adapt the supplied caller:
 
@@ -211,6 +218,10 @@ runs. The [action reference](../config/pipelines.md#deploy) defines all supporte
 For deployment validation, uncomment the BUILD job's environment block, set its name,
 and set the action's `environment-name` to that same value. Provide the target's URL,
 credentials, process-owner UPN, connections, and Dataverse values.
+
+The automated setup prompt defaults BUILD validation to No unless it detects an existing
+BUILD environment association or active `solutionCheck.enabled = $true` configuration
+on the default branch.
 
 > [!CAUTION]
 > Use a dedicated non-production Dataverse environment for BUILD validation. It is

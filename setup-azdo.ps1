@@ -2,11 +2,12 @@
 .SYNOPSIS
 Interactively configures Azure DevOps repositories, pipelines and Dataverse environments.
 .DESCRIPTION
-Requires an interactive PowerShell session on Windows and identities allowed to administer
-the selected Azure DevOps project and Dataverse environments. Downloads pinned modules
-and portable Git, authenticates, then offers branch-aware setup and publication choices.
-Remote resource provisioning can occur before repository changes are published; cancelling
-publication does not roll back those resources.
+Requires an interactive Windows PowerShell 5.1 session on Windows or PowerShell 7 on
+Windows or Linux, and identities allowed to administer the selected Azure DevOps project
+and Dataverse environments. Downloads pinned modules and portable Git on Windows; on
+Linux, uses system Git from PATH. Authenticates, then offers branch-aware setup and
+publication choices. Remote resource provisioning can occur before repository changes
+are published; cancelling publication does not roll back those resources.
 .NOTES
 Selected mutation helpers support ShouldProcess; the interactive installer as a whole
 does not provide a dry run.
@@ -74,21 +75,35 @@ else {
 function Install-PortableGit {
     <#
     .SYNOPSIS
-    Returns the Git directory under Destination, downloading the pinned Windows archive if needed.
+    Returns the Git bin directory, using system Git off Windows or installing portable Git on Windows.
     .NOTES
-    An existing bin\git.exe is reused without version verification. Download, extraction
-    and missing-executable failures terminate setup; PATH is updated by the caller.
+    Non-Windows systems require Git on PATH. Windows reuses an existing bin\git.exe
+    without version verification; download, extraction and missing-executable failures
+    terminate setup. PATH is updated by the caller.
     #>
     param(
         [Parameter(Mandatory)][string]$Destination
     )
 
-    $gitDir = Join-Path $Destination "Git"
-    $gitExe = Join-Path $gitDir "bin\git.exe"
+    if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
+        $gitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if (-not $gitCommand) {
+            throw 'Git must be installed and available on PATH on non-Windows systems.'
+        }
 
-    if (Test-Path $gitExe) {
+        $gitBinDir = Split-Path -Parent $gitCommand.Source
+        Write-Host "Using system Git at: $($gitCommand.Source)"
+        return $gitBinDir
+    }
+
+    $gitDir = Join-Path $Destination "Git"
+    $gitBinDir = Join-Path $gitDir 'bin'
+    $gitExe = Join-Path $gitBinDir 'git.exe'
+
+    if (Test-Path -LiteralPath $gitExe -PathType Leaf) {
         Write-Host "Git already available at: $gitExe"
-        return $gitDir
+        return $gitBinDir
     }
 
     Write-Host "Downloading portable Git..." -ForegroundColor Yellow
@@ -126,12 +141,12 @@ function Install-PortableGit {
         # Clean up installer
         Remove-Item $gitInstaller -Force -ErrorAction SilentlyContinue
 
-        if (-not (Test-Path $gitExe)) {
+        if (-not (Test-Path -LiteralPath $gitExe -PathType Leaf)) {
             throw "Git extraction completed but git.exe not found at expected location"
         }
 
         Write-Host "Git extracted successfully to: $gitDir"
-        return $gitDir
+        return $gitBinDir
     }
     catch {
         Write-Host "Failed to install portable Git: $($_.Exception.Message)" -ForegroundColor Red
@@ -199,13 +214,12 @@ foreach ($modName in $requiredModules.Keys) {
     Import-RequiredModuleVersion -Name $modName -RequiredVersion $version -Destination $TempModuleRoot
 }
 
-# Download and install portable Git
-$gitInstallDir = Install-PortableGit -Destination $TempModuleRoot
-$gitBinDir = Join-Path $gitInstallDir "bin"
+# Install portable Git on Windows or use system Git on non-Windows systems.
+$gitBinDir = Install-PortableGit -Destination $TempModuleRoot
 
 # Add Git to PATH for this session
-if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $gitBinDir })) {
-    $env:PATH = "$gitBinDir;$env:PATH"
+if (-not ($env:PATH -split [Regex]::Escape($delim) | Where-Object { $_ -eq $gitBinDir })) {
+    $env:PATH = "$gitBinDir$delim$env:PATH"
 }
 
 # Verify Git is now available
@@ -884,7 +898,7 @@ function Initialize-AzDoProjectAndRepository {
                 Write-Host "Extension '$requiredExtension' not found. Installing..." -ForegroundColor Yellow
                 Write-Host "This may require organization administrative permissions." -ForegroundColor Yellow
 
-                Install-VSTeamExtension -PublisherId $publisherId -ExtensionId $extensionId
+                Add-VSTeamExtension -PublisherId $publisherId -ExtensionId $extensionId
 
                 $installedExtensions = Get-VSTeamExtension
                 $installed = $installedExtensions | Where-Object { $_.publisherId -eq $publisherId -and $_.extensionId -eq $extensionId }
@@ -937,7 +951,7 @@ function Initialize-AzDoProjectAndRepository {
                 throw "Could not determine remoteUrl for repository '$sharedRepoName'."
             }
 
-            $workRoot = Join-Path $env:TEMP ("ALM4Dataverse-Init-" + [guid]::NewGuid().ToString('n'))
+            $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ALM4Dataverse-Init-" + [guid]::NewGuid().ToString('n'))
             New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 
             try {
@@ -1004,7 +1018,7 @@ function Initialize-AzDoProjectAndRepository {
             throw "Could not determine remoteUrl for repository '$sharedRepoName'."
         }
 
-        $workRoot = Join-Path $env:TEMP ("ALM4Dataverse-Check-" + [guid]::NewGuid().ToString('n'))
+        $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ALM4Dataverse-Check-" + [guid]::NewGuid().ToString('n'))
         New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 
         try {
@@ -1134,9 +1148,9 @@ function Get-DataverseEnvironmentCatalog {
     .SYNOPSIS
     Returns discovery environments, reusing the script cache unless ForceRefresh is specified.
     .NOTES
-    ShowStatus affects discovery presentation only. The token callback requests the
-    resource authority, falling back to global discovery when no resource is supplied.
-    An empty discovery result throws; it is not a valid initial catalog.
+    Acquires a Global Discovery token before calling the discovery cmdlet because
+    its token callback runs on a worker task. The callback only returns that token.
+    ShowStatus affects presentation only. An empty discovery result throws.
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject], [object[]])]
@@ -1150,19 +1164,32 @@ function Get-DataverseEnvironmentCatalog {
         return @($script:dataverseEnvironmentCatalog)
     }
 
-    $fetchCatalog = {
-        @(Get-DataverseEnvironment -AccessToken {
-            param($resource)
-            if (-not $resource) { $resource = 'https://globaldisco.crm.dynamics.com/' }
-            try {
-                $uri = [System.Uri]$resource
-                $resource = $uri.GetLeftPart([System.UriPartial]::Authority)
-            }
-            catch { Write-Verbose 'Could not normalize the authentication resource; using the supplied value.' }
+    $discoveryResource = 'https://globaldisco.crm.dynamics.com'
+    if ($ShowStatus) {
+        Write-Host 'Authenticating to retrieve Dataverse environments...' -ForegroundColor DarkGray
+    }
 
-            $auth = Get-AuthToken -ResourceUrl $resource
-            return $auth.AccessToken
-        })
+    $discoveryAccessToken = Get-SetupAccessToken -ResourceUrl $discoveryResource
+    $accessTokenProvider = {
+        param($resource)
+        if (-not [string]::IsNullOrWhiteSpace($resource)) {
+            try {
+                $resourceAuthority = ([System.Uri]$resource).GetLeftPart([System.UriPartial]::Authority)
+            }
+            catch {
+                throw 'Dataverse environment discovery requested an invalid authentication resource.'
+            }
+
+            if ($resourceAuthority -ne $discoveryResource) {
+                throw 'Dataverse environment discovery requested a token for an unexpected resource.'
+            }
+        }
+
+        return $discoveryAccessToken
+    }.GetNewClosure()
+
+    $fetchCatalog = {
+        @(Get-DataverseEnvironment -AccessToken $accessTokenProvider)
     }
 
     if ($ShowStatus) {
@@ -1550,14 +1577,54 @@ function Select-AzDoSharedRepository {
     }
 }
 
+function Get-AzDoCallerSecretVariableBlock {
+    <#
+    .SYNOPSIS
+    Returns the template-level secretVariables block from an existing caller pipeline.
+    .NOTES
+    Recognizes the generated caller layout: the key at four spaces under the single
+    template's parameters, followed by list items indented at four or more spaces.
+    Returns the lines joined by the platform newline, or an empty string when the file
+    or block is absent, so callers can append it to regenerated content verbatim.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+
+    $secretVariableLines = [System.Collections.Generic.List[string]]::new()
+    $inSecretVariables = $false
+    foreach ($existingLine in @(Get-Content -LiteralPath $Path)) {
+        if ($existingLine -match '^\s{4}secretVariables:') {
+            $inSecretVariables = $true
+            $secretVariableLines.Add($existingLine)
+        }
+        elseif ($inSecretVariables -and ($existingLine -match '^\s{5,}\S' -or $existingLine -match '^\s{4}-\s')) {
+            $secretVariableLines.Add($existingLine)
+        }
+        else {
+            $inSecretVariables = $false
+        }
+    }
+
+    return ($secretVariableLines -join [Environment]::NewLine)
+}
+
 function Sync-CopyToYourRepoIntoGitRepo {
     <#
     .SYNOPSIS
     Copies the scaffold into a working tree, adapting branch, repository and extension references.
     .NOTES
     Overwrites differing scaffold files but preserves existing alm-config.psd1 for the
-    later merge. DEPLOY-main becomes DEPLOY-Branch; extension false selects the fallback.
-    Obsolete .template companions are removed for existing destinations. Does not commit.
+    later merge, existing application-owned files (AGENTS.md and data/), and existing
+    BUILD/DEPLOY-Branch callers, which the BUILD and DEPLOY updaters regenerate
+    afterwards without discarding their custom parameters. EXPORT and IMPORT are
+    refreshed from the scaffold but keep an existing template-level secretVariables
+    block. Every pipeline caller's repository resource is renamed to
+    SharedRepositoryName. DEPLOY-main becomes DEPLOY-Branch; extension false selects the
+    fallback. Obsolete .template companions are removed for existing destinations.
+    Does not commit.
     #>
     [CmdletBinding()]
     param(
@@ -1594,6 +1661,18 @@ function Sync-CopyToYourRepoIntoGitRepo {
             continue
         }
 
+        if ((Test-ApplicationOwnedScaffoldPath -RelativePath $normalizedRelativePath) -and (Test-Path -LiteralPath $destPath)) {
+            Write-Host "Preserving existing $normalizedRelativePath." -ForegroundColor DarkGray
+            continue
+        }
+
+        if ($normalizedRelativePath -eq 'pipelines/DEPLOY-main.yml') {
+            $destPath = Join-Path $TargetRoot "pipelines/DEPLOY-$Branch.yml"
+        }
+        if ($normalizedRelativePath -in @('pipelines/BUILD.yml', 'pipelines/DEPLOY-main.yml') -and (Test-Path -LiteralPath $destPath)) {
+            continue
+        }
+
         $destDir = Split-Path -Parent $destPath
         if (-not (Test-Path -LiteralPath $destDir)) {
             New-Item -ItemType Directory -Path $destDir -Force | Out-Null
@@ -1603,7 +1682,6 @@ function Sync-CopyToYourRepoIntoGitRepo {
         $isTempFile = $false
 
         if ($normalizedRelativePath -eq 'pipelines/DEPLOY-main.yml') {
-            $destPath = Join-Path $TargetRoot "pipelines/DEPLOY-$Branch.yml"
 
             $content = Get-Content -LiteralPath $file.FullName -Raw
             $content = $content -replace "source: 'BUILD'", "source: '$RepositoryName\BUILD'"
@@ -1618,10 +1696,16 @@ function Sync-CopyToYourRepoIntoGitRepo {
             $sourceFileToUse = $tempFile
             $isTempFile = $true
         }
-        elseif (-not $UseAlm4DataverseExtension -and $normalizedRelativePath -in @('pipelines/EXPORT.yml', 'pipelines/IMPORT.yml')) {
+        elseif ($normalizedRelativePath -in @('pipelines/EXPORT.yml', 'pipelines/IMPORT.yml')) {
             $content = Get-Content -LiteralPath $file.FullName -Raw
-            $content = $content -replace '(?m)^(\s*useAlm4DataverseExtension:\s*)true\s*$', '${1}false'
+            if (-not $UseAlm4DataverseExtension) {
+                $content = $content -replace '(?m)^(\s*useAlm4DataverseExtension:\s*)true\s*$', '${1}false'
+            }
             $content = $content -replace '(?m)^(\s*name:\s*)ALM4Dataverse\s*$', "`${1}$SharedRepositoryName"
+            $secretVariableBlock = Get-AzDoCallerSecretVariableBlock -Path $destPath
+            if ($secretVariableBlock) {
+                $content = $content.TrimEnd("`r", "`n") + [Environment]::NewLine + $secretVariableBlock + [Environment]::NewLine
+            }
 
             $tempFile = [System.IO.Path]::GetTempFileName()
             $content | Set-Content -LiteralPath $tempFile -NoNewline
@@ -1693,7 +1777,7 @@ function New-AzDoRepoWorkingTree {
         throw "Could not determine remoteUrl for repository '$($TargetRepo.Name)'."
     }
 
-    $cloneRoot = Join-Path $env:TEMP ("ALM4Dataverse-MainRepo-" + [guid]::NewGuid().ToString('n'))
+    $cloneRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ALM4Dataverse-MainRepo-" + [guid]::NewGuid().ToString('n'))
     if (Test-Path -LiteralPath $cloneRoot) {
         try { Remove-Item -LiteralPath $cloneRoot -Recurse -Force -ErrorAction Stop } catch { throw }
     }
@@ -3144,6 +3228,40 @@ function Get-DataverseServiceAccountUPN {
     }
 }
 
+function Get-AzDoVariableGroupByName {
+    <#
+    .SYNOPSIS
+    Retrieves a variable group by name without applying VSTeam's user type decoration.
+    .DESCRIPTION
+    VSTeam 7.15.2 dereferences createdBy and modifiedBy while decorating results, but
+    Azure DevOps can return either field as null. The raw request keeps the same lookup
+    and error behavior without depending on optional user metadata.
+    .PARAMETER ProjectName
+    Azure DevOps project containing the variable group.
+    .PARAMETER GroupName
+    Name of the variable group to retrieve.
+    .OUTPUTS
+    The raw variable group object, or no output when no group matches.
+    #>
+    [CmdletBinding()]
+    [OutputType([object])]
+    param(
+        [Parameter(Mandatory)][string]$ProjectName,
+        [Parameter(Mandatory)][string]$GroupName
+    )
+
+    $response = Invoke-VSTeamRequest `
+        -Method GET `
+        -ProjectName $ProjectName `
+        -Area 'distributedtask' `
+        -Resource 'variablegroups' `
+        -Version '5.1-preview.1' `
+        -QueryString @{ groupName = $GroupName } `
+        -ErrorAction Stop
+
+    return $response.value
+}
+
 function Initialize-AzDoVariableGroup {
     <#
     .SYNOPSIS
@@ -3164,9 +3282,9 @@ function Initialize-AzDoVariableGroup {
 
     $group = $null
 
-    # Use VSTeam command to check for existing variable groups
+    # Query the raw REST response because VSTeam's typed getter assumes user metadata is present.
     try {
-        $existing = Get-VSTeamVariableGroup -ProjectName $Project -Name $GroupName -ErrorAction Stop
+        $existing = Get-AzDoVariableGroupByName -ProjectName $Project -GroupName $GroupName -ErrorAction Stop
         if ($existing) {
             Write-Host "Variable group '$GroupName' already exists (id: $($existing.id))."
             $group = $existing
@@ -3180,22 +3298,40 @@ function Initialize-AzDoVariableGroup {
     if (-not $group) {
         Write-Host "Creating variable group '$GroupName'..." -ForegroundColor Yellow
 
-        # Build variables payload in the format expected by Add-VSTeamVariableGroup
         $variablesPayload = @{}
         foreach ($k in $Variables.Keys) {
             $variablesPayload[$k] = @{ value = [string]$Variables[$k] }
         }
 
-        # Use VSTeam command to create variable group
-        $created = Add-VSTeamVariableGroup -ProjectName $Project -Name $GroupName -Type 'Vsts' -Variables $variablesPayload -Description 'ALM4Dataverse environment variable group (created by setup-azdo.ps1)'
+        $description = 'ALM4Dataverse environment variable group (created by setup-azdo.ps1)'
+        $createPayload = @{
+            name        = $GroupName
+            description = $description
+            type        = 'Vsts'
+            variables   = $variablesPayload
+        } | ConvertTo-Json -Depth 100
+
+        # VSTeam's add command follows the POST with a typed GET that assumes user metadata exists.
+        $created = Invoke-VSTeamRequest `
+            -Method POST `
+            -ProjectName $Project `
+            -Area 'distributedtask' `
+            -Resource 'variablegroups' `
+            -Body $createPayload `
+            -ContentType 'application/json' `
+            -Version '5.1-preview.1' `
+            -ErrorAction Stop
 
         if ($created -and $created.id) {
+            $group = Get-AzDoVariableGroupByName -ProjectName $Project -GroupName $GroupName -ErrorAction Stop
+            if (-not $group) {
+                throw "Variable group '$GroupName' was created but could not be retrieved."
+            }
+
             Write-Host "Created variable group '$GroupName' (id: $($created.id))."
-            $group = $created
         }
         else {
-            Write-Host "Created variable group '$GroupName'."
-            $group = $created
+            throw "Azure DevOps did not return an ID when creating variable group '$GroupName'."
         }
     }
 
@@ -3232,7 +3368,7 @@ function Update-AzDoVariableGroup {
     if (-not $PSCmdlet.ShouldProcess("$ProjectName/$GroupName", 'Update Azure DevOps variable group')) { return }
 
     try {
-        $group = Get-VSTeamVariableGroup -ProjectName $ProjectName -Name $GroupName -ErrorAction SilentlyContinue
+        $group = Get-AzDoVariableGroupByName -ProjectName $ProjectName -GroupName $GroupName -ErrorAction SilentlyContinue
         if (-not $group) {
             Write-Warning "Variable group '$GroupName' not found. Cannot update."
             return $null
@@ -3240,7 +3376,6 @@ function Update-AzDoVariableGroup {
 
         Write-Host "Updating variable group '$GroupName'..." -ForegroundColor DarkGray
 
-        # Build variables payload in the format expected by Update-VSTeamVariableGroup
         $variablesPayload = @{}
 
         # First, copy existing variables if the group has any
@@ -3255,8 +3390,24 @@ function Update-AzDoVariableGroup {
             $variablesPayload[$k] = @{ value = [string]$Variables[$k] }
         }
 
-        # Use VSTeam command to update variable group
-        Update-VSTeamVariableGroup -ProjectName $ProjectName -Id $group.id -Name $GroupName -Type 'Vsts' -Variables $variablesPayload -Description $group.description | Out-Null
+        $updatePayload = @{
+            name        = $GroupName
+            description = $group.description
+            type        = 'Vsts'
+            variables   = $variablesPayload
+        } | ConvertTo-Json -Depth 100
+
+        # VSTeam's update command also re-fetches and decorates the group after its PUT.
+        Invoke-VSTeamRequest `
+            -Method PUT `
+            -ProjectName $ProjectName `
+            -Area 'distributedtask' `
+            -Resource 'variablegroups' `
+            -Id ([string]$group.id) `
+            -Body $updatePayload `
+            -ContentType 'application/json' `
+            -Version '5.1-preview.1' `
+            -ErrorAction Stop | Out-Null
 
         Write-Host "Variable group '$GroupName' updated successfully."
         return $group
@@ -3327,7 +3478,7 @@ Invoke-WithErrorHandling -OperationName "Preparing main repository working tree"
         $copyRoot = Join-Path $PSScriptRoot 'copy-to-your-repo'
     }
     else {
-        $sharedRepoClone = Join-Path $env:TEMP ("ALM4Dataverse-SharedRepo-" + [guid]::NewGuid().ToString('n'))
+        $sharedRepoClone = Join-Path ([System.IO.Path]::GetTempPath()) ("ALM4Dataverse-SharedRepo-" + [guid]::NewGuid().ToString('n'))
         New-Item -ItemType Directory -Path $sharedRepoClone -Force | Out-Null
 
         try {
@@ -3399,18 +3550,11 @@ function Get-DataverseSolutionsSelection {
         $devEnvUrl = ConvertTo-NormalizedEnvironmentUrl -Url $selectedEnv.Endpoints["WebApplication"]
         Write-Host "Selected environment: $($selectedEnv.FriendlyName) ($devEnvUrl)" -ForegroundColor Cyan
 
+        Write-Host 'Authenticating to the selected DEV environment...' -ForegroundColor DarkGray
+        $devAccessTokenCallback = Get-SetupAccessTokenCallback -ResourceUrl $devEnvUrl
         # Connect to the selected environment
         $connection = Invoke-WithSpectreStatus -Status 'Connecting to the selected DEV environment...' -ScriptBlock {
-            Get-DataverseConnection -Url $devEnvUrl -AccessToken {
-                param($resource)
-                if (-not $resource) { $resource = 'https://globaldisco.crm.dynamics.com/' }
-                try {
-                    $uri = [System.Uri]$resource
-                    $resource = $uri.GetLeftPart([System.UriPartial]::Authority)
-                } catch { Write-Verbose 'Could not normalize the authentication resource; using the supplied value.' }
-                $auth = Get-AuthToken -ResourceUrl $resource
-                return $auth.AccessToken
-            }
+            Get-DataverseConnection -Url $devEnvUrl -AccessToken $devAccessTokenCallback
         }
 
         if (-not $connection) {
@@ -3540,7 +3684,9 @@ function Update-AzDoBuildPipelineInWorkingTree {
     .NOTES
     The generated CI trigger includes every branch. An empty BuildEnvironmentName leaves
     validation unassociated; single quotes in its YAML scalar are escaped. This is a
-    whole-file replacement, not a merge of custom YAML. WhatIf skips the write.
+    whole-file replacement, not a merge of custom YAML, except that an existing
+    template-level secretVariables parameter block is carried over unchanged.
+    WhatIf skips the write.
     #>
         [CmdletBinding(SupportsShouldProcess = $true)]
         param(
@@ -3560,6 +3706,9 @@ function Update-AzDoBuildPipelineInWorkingTree {
         $extensionLiteral = if ($UseAlm4DataverseExtension) { 'true' } else { 'false' }
         $escapedBuildEnvironmentName = ([string]$BuildEnvironmentName).Replace("'", "''")
 
+        $secretVariableBlock = Get-AzDoCallerSecretVariableBlock -Path $buildPipelinePath
+        if ($secretVariableBlock) { $secretVariableBlock = [Environment]::NewLine + $secretVariableBlock }
+
         $newContent = @"
 trigger:
   branches:
@@ -3576,7 +3725,7 @@ stages:
 - template: pipelines/templates/build.yml@ALM4Dataverse
   parameters:
     useAlm4DataverseExtension: $extensionLiteral
-    buildEnvironmentName: '$escapedBuildEnvironmentName'
+    buildEnvironmentName: '$escapedBuildEnvironmentName'$secretVariableBlock
 "@
 
         Set-Content -LiteralPath $buildPipelinePath -Value $newContent.TrimStart("`r", "`n") -NoNewline
@@ -3590,7 +3739,6 @@ function Initialize-DataverseApplicationUser {
     # Ensure an app-ID systemuser and its root-business-unit System Administrator role.
     # Uses interactive tenant-scoped tokens, not the app's credentials; missing root BU,
     # role or connection throws. Existing user/role associations are retained.
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'TenantId', Justification = 'Used in the nested authentication callback.')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$EnvironmentUrl,
@@ -3600,16 +3748,8 @@ function Initialize-DataverseApplicationUser {
 
     Write-Host "Ensuring application user '$ApplicationId' exists in '$EnvironmentUrl'..." -ForegroundColor DarkGray
 
-    $conn = Get-DataverseConnection -Url $EnvironmentUrl -AccessToken {
-        param($resource)
-        if (-not $resource) { $resource = $EnvironmentUrl }
-        try {
-            $uri = [System.Uri]$resource
-            $resource = $uri.GetLeftPart([System.UriPartial]::Authority)
-        } catch { Write-Verbose 'Could not normalize the authentication resource; using the supplied value.' }
-        $auth = Get-AuthToken -ResourceUrl $resource -TenantId $TenantId
-        return $auth.AccessToken
-    }
+    $accessTokenCallback = Get-SetupAccessTokenCallback -ResourceUrl $EnvironmentUrl -TenantId $TenantId
+    $conn = Get-DataverseConnection -Url $EnvironmentUrl -AccessToken $accessTokenCallback
 
     if (-not $conn) {
         throw "Failed to connect to Dataverse."
@@ -3663,7 +3803,6 @@ function Initialize-DataverseApplicationUser {
 function Initialize-DataverseServiceAccountUser {
     # Resolve/create the UPN systemuser in the root BU and add System Administrator
     # if absent. This provisions Dataverse records/roles, not an Entra account or license.
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'TenantId', Justification = 'Used in the nested authentication callback.')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$EnvironmentUrl,
@@ -3673,16 +3812,8 @@ function Initialize-DataverseServiceAccountUser {
 
     Write-Host "Ensuring service account '$ServiceAccountUPN' has System Administrator role in '$EnvironmentUrl'..." -ForegroundColor DarkGray
 
-    $conn = Get-DataverseConnection -Url $EnvironmentUrl -AccessToken {
-        param($resource)
-        if (-not $resource) { $resource = $EnvironmentUrl }
-        try {
-            $uri = [System.Uri]$resource
-            $resource = $uri.GetLeftPart([System.UriPartial]::Authority)
-        } catch { Write-Verbose 'Could not normalize the authentication resource; using the supplied value.' }
-        $auth = Get-AuthToken -ResourceUrl $resource -TenantId $TenantId
-        return $auth.AccessToken
-    }
+    $accessTokenCallback = Get-SetupAccessTokenCallback -ResourceUrl $EnvironmentUrl -TenantId $TenantId
+    $conn = Get-DataverseConnection -Url $EnvironmentUrl -AccessToken $accessTokenCallback
 
     if (-not $conn) {
         throw "Failed to connect to Dataverse."
@@ -3758,7 +3889,7 @@ function Get-AzDoExistingEnvironmentServiceAccountUPN {
     )
 
     try {
-        $existingVarGroup = Get-VSTeamVariableGroup -ProjectName $ProjectName -Name "Environment-$EnvironmentName" -ErrorAction SilentlyContinue
+        $existingVarGroup = Get-AzDoVariableGroupByName -ProjectName $ProjectName -GroupName "Environment-$EnvironmentName" -ErrorAction SilentlyContinue
         if ($existingVarGroup -and $existingVarGroup.variables -and $existingVarGroup.variables.PSObject.Properties.Name -contains 'DataverseServiceAccountUPN') {
             return $existingVarGroup.variables.DataverseServiceAccountUPN.value
         }
@@ -3967,26 +4098,6 @@ function Get-AzDoBuildEnvironmentNameFromPipelineContent {
     }
 
     return $value.Trim()
-}
-
-function Get-SolutionCheckEnabledFromConfigContent {
-    # Detect the scaffold's literal solutionCheck.enabled; absent/unrecognized means false.
-    # This intentionally inspects text without executing/importing remote configuration.
-    [CmdletBinding()]
-    param(
-        [Parameter()][string]$ConfigContent
-    )
-
-    if ([string]::IsNullOrWhiteSpace($ConfigContent)) {
-        return $false
-    }
-
-    $match = [regex]::Match($ConfigContent, '(?mis)solutionCheck\s*=\s*@\{.*?\benabled\s*=\s*\$(true|false)')
-    if (-not $match.Success) {
-        return $false
-    }
-
-    return ($match.Groups[1].Value -ieq 'true')
 }
 
 function Get-AzDoBuildValidationEnabledFromRepoClone {
@@ -4534,7 +4645,11 @@ function Update-DeployPipelineInWorkingTree {
     An empty target list removes the branch DEPLOY file; nonempty targets require the
     scaffold to exist. The line scanner recognizes the exact template and six-space
     parameter layout, not arbitrary YAML. Preserves other lines and appends entries
-    in promotion order. Returns whether content changed (false under WhatIf).
+    in promotion order. Parameters other than environmentName and
+    useAlm4DataverseExtension (for example secretVariables or timeoutInMinutes),
+    including their nested lines, are carried over to the regenerated entry for the
+    same environment name; entries for removed environments are dropped.
+    Returns whether content changed (false under WhatIf).
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -4567,6 +4682,7 @@ function Update-DeployPipelineInWorkingTree {
     $originalContent = Get-Content -LiteralPath $deployYamlPath -Raw
     $contentLines = Get-Content -LiteralPath $deployYamlPath
     $cleanedContent = @()
+    $preservedParameterLines = @{}
     $i = 0
     while ($i -lt $contentLines.Count) {
         $line = $contentLines[$i]
@@ -4574,8 +4690,30 @@ function Update-DeployPipelineInWorkingTree {
             $i++
             if ($i -lt $contentLines.Count -and $contentLines[$i].Trim() -eq 'parameters:') {
                 $i++
-                while ($i -lt $contentLines.Count -and $contentLines[$i] -match '^\s{6}\S') {
+                $existingEnvironmentName = $null
+                $extraLines = [System.Collections.Generic.List[string]]::new()
+                $inExtraParameter = $false
+                # Deeper lines belong to the preceding parameter, such as list items.
+                while ($i -lt $contentLines.Count -and $contentLines[$i] -match '^\s{6,}\S') {
+                    $parameterLine = $contentLines[$i]
+                    if ($parameterLine -match '^\s{6}environmentName:\s*(.*?)\s*$') {
+                        $existingEnvironmentName = $Matches[1].Trim("'", '"')
+                        $inExtraParameter = $false
+                    }
+                    elseif ($parameterLine -match '^\s{6}useAlm4DataverseExtension:') {
+                        $inExtraParameter = $false
+                    }
+                    elseif ($parameterLine -match '^\s{6}\S') {
+                        $inExtraParameter = $true
+                        $extraLines.Add($parameterLine)
+                    }
+                    elseif ($inExtraParameter) {
+                        $extraLines.Add($parameterLine)
+                    }
                     $i++
+                }
+                if (-not [string]::IsNullOrWhiteSpace($existingEnvironmentName) -and $extraLines.Count -gt 0) {
+                    $preservedParameterLines[$existingEnvironmentName] = @($extraLines)
                 }
             }
         }
@@ -4591,6 +4729,11 @@ function Update-DeployPipelineInWorkingTree {
         $newStages += "    parameters:`n"
         $newStages += "      environmentName: $($env.ShortName)`n"
         $newStages += "      useAlm4DataverseExtension: $($UseAlm4DataverseExtension.ToString().ToLowerInvariant())`n"
+        if ($preservedParameterLines.ContainsKey([string]$env.ShortName)) {
+            foreach ($preservedLine in $preservedParameterLines[[string]$env.ShortName]) {
+                $newStages += "$preservedLine`n"
+            }
+        }
     }
 
     $updatedContent = (($cleanedContent -join [Environment]::NewLine).TrimEnd() + $newStages).TrimEnd() + [Environment]::NewLine
@@ -5625,7 +5768,7 @@ if ($PSScriptRoot) {
     $copyRoot = Join-Path $PSScriptRoot 'copy-to-your-repo'
 }
 else {
-    $sharedRepoClone = Join-Path $env:TEMP ("ALM4Dataverse-SharedRepo-" + [guid]::NewGuid().ToString('n'))
+    $sharedRepoClone = Join-Path ([System.IO.Path]::GetTempPath()) ("ALM4Dataverse-SharedRepo-" + [guid]::NewGuid().ToString('n'))
     New-Item -ItemType Directory -Path $sharedRepoClone -Force | Out-Null
 
     Invoke-WithErrorHandling -OperationName 'Cloning shared repository templates' -StatusMessage 'Cloning the shared repository to get template files...' -CaptureOutputInPanel -ScriptBlock {

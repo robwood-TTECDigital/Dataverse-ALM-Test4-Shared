@@ -9,6 +9,17 @@ function New-DirectoryIfMissing {
     }
 }
 
+function Test-ApplicationOwnedScaffoldPath {
+    # Scaffold files that applications are told to customize (agent instructions and
+    # example data hooks) are created when missing but never overwritten by a re-run.
+    # RelativePath uses forward slashes, relative to the copy-to-your-repo root.
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][string]$RelativePath)
+
+    return ($RelativePath -ieq 'AGENTS.md' -or $RelativePath -like 'data/*')
+}
+
 function Expand-SetupConsoleArchive {
     <#
     .SYNOPSIS
@@ -2647,6 +2658,60 @@ function Set-AlmConfigSolutionsInFile {
     return $hasChanges
 }
 
+function Get-SolutionCheckEnabledFromConfigContent {
+    # Inspect the syntax tree without executing repository data; commented examples are excluded.
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()][AllowEmptyString()][string]$ConfigContent
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ConfigContent)) {
+        return $false
+    }
+
+    $tokens = $null
+    $parseErrors = $null
+    $configAst = [System.Management.Automation.Language.Parser]::ParseInput($ConfigContent, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count -gt 0) {
+        throw "Unable to inspect alm-config.psd1 for BUILD solution-check settings: $($parseErrors[0].Message)"
+    }
+
+    foreach ($configurationHashtable in $configAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.HashtableAst]
+    }, $true)) {
+        foreach ($configurationEntry in $configurationHashtable.KeyValuePairs) {
+            if (
+                $configurationEntry.Item1 -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                $configurationEntry.Item1.Value -ine 'solutionCheck'
+            ) {
+                continue
+            }
+
+            $solutionCheckHashtable = $configurationEntry.Item2.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.HashtableAst]
+            }, $true)
+            if ($null -eq $solutionCheckHashtable) {
+                continue
+            }
+
+            foreach ($setting in $solutionCheckHashtable.KeyValuePairs) {
+                if (
+                    $setting.Item1 -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                    $setting.Item1.Value -ieq 'enabled' -and
+                    $setting.Item2.Extent.Text.Trim() -ieq '$true'
+                ) {
+                    return $true
+                }
+            }
+        }
+    }
+
+    return $false
+}
+
 function Set-AlmConfigSolutionCheckEnabledInFile {
     <#
     .SYNOPSIS
@@ -3897,7 +3962,8 @@ function Invoke-WithErrorHandling {
         Returns operation output or null when skipped. Retry invokes the operation
         again without rollback, so partial side effects must be handled by callers.
         Back/cancellation exceptions bypass the error menu. Abort or a cancelled
-        menu throws a setup-aborted error.
+        menu throws a setup-aborted error. When a .NET callback wraps a PowerShell
+        failure, the innermost error and its source location are shown when available.
     .PARAMETER StatusMessage
         Nonblank enables Invoke-WithSpectreStatus and its callback/output semantics;
         blank invokes ScriptBlock directly with no positional arguments.
@@ -3935,6 +4001,34 @@ function Invoke-WithErrorHandling {
                 "[yellow]Error Type:[/] $(ConvertTo-SpectreMarkupLiteral -Text $_.Exception.GetType().Name)",
                 "[yellow]Error Message:[/] $(ConvertTo-SpectreMarkupLiteral -Text $_.Exception.Message)"
             )
+
+            $innerException = $_.Exception.InnerException
+            while ($null -ne $innerException -and $null -ne $innerException.InnerException) {
+                $innerException = $innerException.InnerException
+            }
+            if ($innerException) {
+                $errorLines += "[yellow]Inner Error Type:[/] $(ConvertTo-SpectreMarkupLiteral -Text $innerException.GetType().Name)"
+                $errorLines += "[yellow]Inner Error Message:[/] $(ConvertTo-SpectreMarkupLiteral -Text $innerException.Message)"
+
+                $innerInvocationInfo = $null
+                $innerStackTrace = $null
+                if ($innerException -is [System.Management.Automation.RuntimeException]) {
+                    $innerErrorRecord = $innerException.ErrorRecord
+                    if ($innerErrorRecord) {
+                        $innerInvocationInfo = $innerErrorRecord.InvocationInfo
+                        $innerStackTrace = $innerErrorRecord.ScriptStackTrace
+                    }
+                }
+                if ($innerInvocationInfo -and $innerInvocationInfo.PositionMessage) {
+                    $errorLines += "[grey]Inner Location:[/] $(ConvertTo-SpectreMarkupLiteral -Text $innerInvocationInfo.PositionMessage.Trim())"
+                }
+                if (-not $innerStackTrace) {
+                    $innerStackTrace = $innerException.StackTrace
+                }
+                if ($innerStackTrace) {
+                    $errorLines += "[grey]Inner Stack Trace:[/] $(ConvertTo-SpectreMarkupLiteral -Text $innerStackTrace.Trim())"
+                }
+            }
 
             if ($_.InvocationInfo.PositionMessage) {
                 $errorLines += "[grey]Location:[/] $(ConvertTo-SpectreMarkupLiteral -Text $_.InvocationInfo.PositionMessage.Trim())"
@@ -4077,6 +4171,163 @@ function Show-SetupCompletionScreen {
     }
 }
 
+function Get-SetupMsalAssemblyPath {
+    <#
+    .SYNOPSIS
+        Resolves the Dataverse module's runtime-compatible MSAL assemblies.
+    .DESCRIPTION
+        Returns Core and optional Broker paths from one module target-framework
+        directory. Core editions prefer the active .NET runtime target and fall
+        back to older packaged targets; Desktop uses .NET Framework assemblies.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ModuleBase
+    )
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $runtimeMajor = [System.Environment]::Version.Major
+        $runtimeTargetFramework = if ($runtimeMajor -ge 10) {
+            "net$runtimeMajor.0"
+        }
+        elseif ($runtimeMajor -eq 9) {
+            'net9.0'
+        }
+        else {
+            'net8.0'
+        }
+
+        $targetFrameworks = @($runtimeTargetFramework, 'net8.0', 'netcoreapp3.1') | Select-Object -Unique
+    }
+    else {
+        $targetFrameworks = @('net462')
+    }
+
+    foreach ($targetFramework in $targetFrameworks) {
+        $directory = Join-Path (Join-Path $ModuleBase 'cmdlets') $targetFramework
+        $corePath = Join-Path $directory 'Microsoft.Identity.Client.dll'
+        if (Test-Path -LiteralPath $corePath -PathType Leaf) {
+            $brokerPath = Join-Path $directory 'Microsoft.Identity.Client.Broker.dll'
+            if (-not (Test-Path -LiteralPath $brokerPath -PathType Leaf)) {
+                $brokerPath = $null
+            }
+
+            return [pscustomobject]@{
+                CorePath   = $corePath
+                BrokerPath = $brokerPath
+            }
+        }
+    }
+
+    $allCoreAssemblies = Get-ChildItem -LiteralPath $ModuleBase -Recurse -File -Filter 'Microsoft.Identity.Client.dll'
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $foundCoreAssembly = $allCoreAssemblies |
+            Where-Object { $_.FullName -match 'netcore|netstandard|net\d\.\d' } |
+            Sort-Object FullName |
+            Select-Object -First 1
+    }
+    else {
+        $foundCoreAssembly = $allCoreAssemblies |
+            Where-Object { $_.FullName -match 'net4' } |
+            Sort-Object FullName |
+            Select-Object -First 1
+    }
+
+    if ($foundCoreAssembly) {
+        $brokerPath = Join-Path $foundCoreAssembly.DirectoryName 'Microsoft.Identity.Client.Broker.dll'
+        if (-not (Test-Path -LiteralPath $brokerPath -PathType Leaf)) {
+            $brokerPath = $null
+        }
+
+        return [pscustomobject]@{
+            CorePath   = $foundCoreAssembly.FullName
+            BrokerPath = $brokerPath
+        }
+    }
+
+    return $null
+}
+
+function Get-SetupDefaultContextAssembly {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $assemblies = if ($PSVersionTable.PSEdition -eq 'Core') {
+        [System.Runtime.Loader.AssemblyLoadContext]::Default.Assemblies
+    }
+    else {
+        [System.AppDomain]::CurrentDomain.GetAssemblies()
+    }
+
+    return $assemblies |
+        Where-Object { $_.GetName().Name -eq $Name } |
+        Select-Object -First 1
+}
+
+function Get-SetupAssemblyVersion {
+    param(
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    return [System.Reflection.AssemblyName]::GetAssemblyName($Path).Version
+}
+
+function Initialize-SetupMsalAssembly {
+    <#
+    .SYNOPSIS
+        Loads MSAL Core and Broker together for setup authentication.
+    .DESCRIPTION
+        Loads matching assemblies into the PowerShell default load context so
+        setup's token helper and the Dataverse binary cmdlets share type identity.
+        A preloaded assembly with an incompatible version throws. If module assets
+        are unavailable, MSAL Core is resolved by its assembly name.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()][string]$ModuleBase
+    )
+
+    $assemblyPaths = if (-not [string]::IsNullOrWhiteSpace($ModuleBase)) {
+        Get-SetupMsalAssemblyPath -ModuleBase $ModuleBase
+    }
+    else {
+        $null
+    }
+
+    if (-not $assemblyPaths) {
+        [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.Identity.Client')
+        return
+    }
+
+    $expectedCoreVersion = Get-SetupAssemblyVersion -Path $assemblyPaths.CorePath
+    if ($assemblyPaths.BrokerPath) {
+        $expectedBrokerVersion = Get-SetupAssemblyVersion -Path $assemblyPaths.BrokerPath
+        if ($expectedBrokerVersion -ne $expectedCoreVersion) {
+            throw "The Dataverse module's MSAL Core ($expectedCoreVersion) and Broker ($expectedBrokerVersion) assemblies do not match."
+        }
+    }
+
+    $loadedCoreAssembly = Get-SetupDefaultContextAssembly -Name 'Microsoft.Identity.Client'
+    if ($loadedCoreAssembly -and $loadedCoreAssembly.GetName().Version -ne $expectedCoreVersion) {
+        throw "An incompatible Microsoft.Identity.Client version '$($loadedCoreAssembly.GetName().Version)' is already loaded. The Dataverse module requires '$expectedCoreVersion'; restart PowerShell to load a consistent MSAL pair."
+    }
+
+    $loadedBrokerAssembly = Get-SetupDefaultContextAssembly -Name 'Microsoft.Identity.Client.Broker'
+    if ($loadedBrokerAssembly -and $loadedBrokerAssembly.GetName().Version -ne $expectedCoreVersion) {
+        throw "An incompatible Microsoft.Identity.Client.Broker version '$($loadedBrokerAssembly.GetName().Version)' is already loaded. The Dataverse module requires '$expectedCoreVersion'; restart PowerShell to load a consistent MSAL pair."
+    }
+
+    # The binary cmdlets run in the default context; keep Core and Broker together there.
+    if (-not $loadedCoreAssembly) {
+        Add-Type -Path $assemblyPaths.CorePath -ErrorAction Stop | Out-Null
+    }
+    if ($assemblyPaths.BrokerPath -and -not $loadedBrokerAssembly) {
+        Add-Type -Path $assemblyPaths.BrokerPath -ErrorAction Stop | Out-Null
+    }
+}
+
 function Get-AuthToken {
     <#
     .SYNOPSIS
@@ -4094,12 +4345,13 @@ function Get-AuthToken {
         Returns distinct nonblank cached usernames instead of an authentication result;
         still loads MSAL, constructs/reuses the client and reads the disk cache.
     .DESCRIPTION
-        Requires MSAL already available or discoverable inside the loaded Dataverse
-        module. Script-scoped MsalApp is reused: ClientId and TenantId only affect
-        its first construction. Loads/saves serialized MSAL V3 bytes under local app
-        data without additional encryption here; cache read/write failures warn.
-        Silent failure falls back interactively; interactive acquisition errors throw.
-        The normal result is MSAL AuthenticationResult, not just its access-token text.
+        Loads matching MSAL Core and optional Broker assemblies into the PowerShell
+        default load context from the loaded Dataverse module. Script-scoped MsalApp
+        is reused: ClientId and TenantId only affect its first construction.
+        Loads/saves serialized MSAL V3 bytes under local app data without additional
+        encryption here; cache read/write failures warn. Silent failure falls back
+        interactively; interactive acquisition errors throw. The normal result is
+        MSAL AuthenticationResult, not just its access-token text.
     #>
     param(
         [Parameter(Mandatory)][string]$ResourceUrl,
@@ -4110,45 +4362,16 @@ function Get-AuthToken {
         [Parameter()][switch]$ListAccountsOnly
     )
 
-    [void][System.Reflection.Assembly]::LoadWithPartialName("Microsoft.Identity.Client")
-
-    try {
-        [void][Microsoft.Identity.Client.PublicClientApplicationBuilder]
+    $module = Get-Module -Name 'Rnwood.Dataverse.Data.PowerShell' | Select-Object -First 1
+    if ($module) {
+        Initialize-SetupMsalAssembly -ModuleBase $module.ModuleBase
     }
-    catch {
-        $module = Get-Module -Name "Rnwood.Dataverse.Data.PowerShell"
-        if ($module) {
-            $base = $module.ModuleBase
-            $dllPath = $null
+    else {
+        Initialize-SetupMsalAssembly
+    }
 
-            if ($PSVersionTable.PSEdition -eq 'Core') {
-                $dllPath = Join-Path $base "cmdlets\net8.0\Microsoft.Identity.Client.dll"
-                if (-not (Test-Path $dllPath)) {
-                    $dllPath = Join-Path $base "cmdlets\netcoreapp3.1\Microsoft.Identity.Client.dll"
-                }
-            }
-            else {
-                $dllPath = Join-Path $base "cmdlets\net462\Microsoft.Identity.Client.dll"
-            }
-
-            if ($dllPath -and (Test-Path $dllPath)) {
-                Add-Type -Path $dllPath
-            }
-            else {
-                $allDlls = Get-ChildItem $base -Recurse -Filter "Microsoft.Identity.Client.dll"
-                $found = $null
-                if ($PSVersionTable.PSEdition -eq 'Core') {
-                    $found = $allDlls | Where-Object { $_.FullName -match 'netcore|netstandard|net\d\.\d' } | Select-Object -First 1
-                }
-                else {
-                    $found = $allDlls | Where-Object { $_.FullName -match 'net4' } | Select-Object -First 1
-                }
-
-                if ($found) {
-                    Add-Type -Path $found.FullName
-                }
-            }
-        }
+    if (-not ('Microsoft.Identity.Client.PublicClientApplicationBuilder' -as [type])) {
+        throw 'Microsoft.Identity.Client could not be loaded for setup authentication.'
     }
 
     $ResourceUrl = $ResourceUrl.TrimEnd('/')
@@ -4253,6 +4476,107 @@ function Get-AuthToken {
     }
 
     return $authResult
+}
+
+function Get-SetupAccessToken {
+    <#
+    .SYNOPSIS
+        Acquires an access token on the setup runspace for a Dataverse resource.
+    .DESCRIPTION
+        Normalizes ResourceUrl to its HTTP(S) authority and validates that MSAL
+        returned a token. Call before invoking Dataverse cmdlets whose token
+        callbacks run on worker tasks, so interactive authentication and assembly
+        initialization happen on the setup runspace.
+    .PARAMETER ResourceUrl
+        Absolute HTTP(S) resource URL for which to acquire the token.
+    .PARAMETER TenantId
+        Optional tenant passed to the setup MSAL client.
+    .OUTPUTS
+        System.String
+        The access token. Do not write it to logs or the terminal.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$ResourceUrl,
+        [Parameter()][string]$TenantId
+    )
+
+    $resourceValue = $ResourceUrl.Trim()
+    $resourceUri = $null
+    if (
+        -not [System.Uri]::TryCreate($resourceValue, [System.UriKind]::Absolute, [ref]$resourceUri) -or
+        $resourceUri.Scheme -notin @('http', 'https')
+    ) {
+        throw 'A valid HTTP(S) resource URL is required for Dataverse authentication.'
+    }
+
+    $authenticationParameters = @{
+        ResourceUrl = $resourceUri.GetLeftPart([System.UriPartial]::Authority)
+    }
+    if ($PSBoundParameters.ContainsKey('TenantId')) {
+        $authenticationParameters.TenantId = $TenantId
+    }
+
+    $authentication = Get-AuthToken @authenticationParameters
+    if (-not $authentication -or [string]::IsNullOrWhiteSpace($authentication.AccessToken)) {
+        throw 'Authentication did not return an access token for the Dataverse resource.'
+    }
+
+    return [string]$authentication.AccessToken
+}
+
+function Get-SetupAccessTokenCallback {
+    <#
+    .SYNOPSIS
+        Returns a worker-safe Dataverse access-token callback.
+    .DESCRIPTION
+        Acquires the token on the setup runspace and returns a closure that only
+        returns that token. The callback validates requested resources but does
+        not perform MSAL calls or refresh the token on the cmdlet's worker task.
+    .PARAMETER ResourceUrl
+        Absolute HTTP(S) URL for the Dataverse resource.
+    .PARAMETER TenantId
+        Optional tenant passed to the setup MSAL client.
+    .OUTPUTS
+        System.Management.Automation.ScriptBlock
+        A callback returning the captured access token for the requested resource.
+    #>
+    [CmdletBinding()]
+    [OutputType([scriptblock])]
+    param(
+        [Parameter(Mandatory)][string]$ResourceUrl,
+        [Parameter()][string]$TenantId
+    )
+
+    $authenticationParameters = @{ ResourceUrl = $ResourceUrl }
+    if ($PSBoundParameters.ContainsKey('TenantId')) {
+        $authenticationParameters.TenantId = $TenantId
+    }
+
+    $accessToken = Get-SetupAccessToken @authenticationParameters
+    $expectedResourceAuthority = ([System.Uri]$ResourceUrl.Trim()).GetLeftPart([System.UriPartial]::Authority)
+    $accessTokenProvider = {
+        param($resource)
+        if (-not [string]::IsNullOrWhiteSpace([string]$resource)) {
+            $resourceUri = $null
+            if (
+                -not [System.Uri]::TryCreate([string]$resource, [System.UriKind]::Absolute, [ref]$resourceUri) -or
+                $resourceUri.Scheme -notin @('http', 'https')
+            ) {
+                throw 'Dataverse authentication requested an invalid resource URL.'
+            }
+
+            $resourceAuthority = $resourceUri.GetLeftPart([System.UriPartial]::Authority)
+            if ($resourceAuthority -ine $expectedResourceAuthority) {
+                throw 'Dataverse authentication callback requested an unexpected resource.'
+            }
+        }
+
+        return $accessToken
+    }.GetNewClosure()
+
+    return $accessTokenProvider
 }
 
 function New-EntraIdApplicationSecret {

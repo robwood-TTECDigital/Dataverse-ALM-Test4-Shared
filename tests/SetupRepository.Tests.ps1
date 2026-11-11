@@ -7,7 +7,14 @@ BeforeAll {
     function gh { throw 'Unexpected live GitHub command' }
     function Get-VSTeamProject {}
     function Get-VSTeamExtension {}
-    function Install-VSTeamExtension {}
+    function Add-VSTeamExtension {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Mock command signature; Pester inspects these arguments.')]
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)][string]$PublisherId,
+            [Parameter(Mandatory)][string]$ExtensionId
+        )
+    }
     function Set-VSTeamDefaultProject {
         [CmdletBinding(SupportsShouldProcess = $true)]
         param($Project)
@@ -75,6 +82,27 @@ Describe 'Azure DevOps repository selection and working trees' {
         $env:TEMP = $script:workingTemp
         if ($script:workingExitCode) { $global:LASTEXITCODE = $script:workingExitCode.Value }
         else { Remove-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+    }
+
+    It 'declares the caller pipeline helper before preparing the main repository working tree' {
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'setup-azdo.ps1'), [ref]$tokens, [ref]$parseErrors)
+        $helperDefinition = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Get-AzDoCallerSecretVariableBlock'
+        }, $true)
+        $setupStep = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Invoke-WithErrorHandling' -and
+            $node.Extent.Text.Contains('Preparing main repository working tree')
+        }, $true)
+
+        $helperDefinition | Should -Not -BeNullOrEmpty
+        $setupStep | Should -Not -BeNullOrEmpty
+        $helperDefinition.Extent.StartOffset | Should -BeLessThan $setupStep.Extent.StartOffset
     }
 
     It 'selects the preferred shared repository while excluding the application repository' {
@@ -149,6 +177,52 @@ Describe 'Azure DevOps repository selection and working trees' {
     }
 }
 
+Describe 'GitHub clone base branch initialization' {
+    BeforeAll {
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'setup-github.ps1'), [ref]$tokens, [ref]$parseErrors)
+        $definition = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-GitHubCloneBaseBranchCheckout'
+        }, $false)
+        Set-Item -Path 'Function:Invoke-GitHubCloneBaseBranchCheckout' -Value $definition.Body.GetScriptBlock()
+    }
+
+    BeforeEach {
+        $script:cloneHasCommit = $false
+        Mock git {
+            $global:LASTEXITCODE = 0
+            if ($args -contains 'checkout') {
+                $global:LASTEXITCODE = 1
+                'The requested branch does not exist.'
+            }
+            elseif ($args -contains 'rev-parse' -and -not $script:cloneHasCommit) {
+                $global:LASTEXITCODE = 128
+                'fatal: Needed a single revision'
+            }
+        }
+    }
+
+    It 'points an empty clone at an unborn default branch' {
+        $originalPreference = $ErrorActionPreference
+
+        Invoke-GitHubCloneBaseBranchCheckout -RepoRoot $TestDrive -DefaultBranch main
+
+        $ErrorActionPreference | Should -Be $originalPreference
+        Should -Invoke git -Times 1 -Exactly -ParameterFilter {
+            $args -contains 'symbolic-ref' -and $args -contains 'HEAD' -and $args -contains 'refs/heads/main'
+        }
+    }
+
+    It 'still fails when an initialized clone is missing its base branch' {
+        $script:cloneHasCommit = $true
+
+        { Invoke-GitHubCloneBaseBranchCheckout -RepoRoot $TestDrive -DefaultBranch main } | Should -Throw "*Failed to check out repository base branch 'main'*"
+        Should -Invoke git -Times 0 -Exactly -ParameterFilter { $args -contains 'symbolic-ref' }
+    }
+}
+
 Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
     @{ Provider = 'GitHub'; Source = 'setup-github.ps1' }
     @{ Provider = 'Azure DevOps'; Source = 'setup-azdo.ps1' }
@@ -173,11 +247,12 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         $script:adoAccessToken = [pscustomobject]@{ Token = 'fake-token' }
         $script:sync = [pscustomobject]@{ LocalHash = 'one'; UpstreamHash = 'one'; UpstreamRef = 'upstream/main'; CanFastForward = $false; IsAhead = $false; MatchesCanonicalUpstreamDefault = $false }
         $script:repositorySelection = 0
+        $script:ghUser = 'owner'
         $script:divergenceSelection = 2
         Mock Write-Section {}
         Mock Write-SetupGuidance {}
         Mock Read-YesNo { $true }
-        Mock Read-TextWithDefault { 'shared' }
+        Mock Read-TextWithDefault { if ($Prompt -like '*owner*') { $DefaultValue } else { 'shared' } }
         Mock Invoke-WithSpectreStatus { & $ScriptBlock }
         Mock Invoke-WithErrorHandling { & $ScriptBlock }
         Mock Select-FromMenu {
@@ -187,9 +262,9 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         Mock git { $global:LASTEXITCODE = 0; if ($args -contains 'ls-remote') { 'abcdef refs/heads/stable' } }
         Mock gh { $global:LASTEXITCODE = 0 }
         if ($Provider -eq 'GitHub') {
-            Mock Get-GitHubForksOfRepositoryForOwner { [pscustomobject]@{ full_name = 'owner/shared' } }
-            Mock Get-GitHubOwnedReposForOwner { [pscustomobject]@{ full_name = 'owner/shared' }; [pscustomobject]@{ full_name = 'owner/other' } }
-            Mock Get-GitHubRepo { [pscustomobject]@{ name = 'shared'; nameWithOwner = 'owner/shared'; defaultBranchRef = [pscustomobject]@{ name = 'main' } } }
+            Mock Get-GitHubAccessibleForksOfRepository { [pscustomobject]@{ full_name = 'owner/shared' } }
+            Mock Get-GitHubAccessibleRepository { [pscustomobject]@{ full_name = 'owner/shared' }; [pscustomobject]@{ full_name = 'owner/other' } }
+            Mock Get-GitHubRepo { [pscustomobject]@{ name = $Repo; nameWithOwner = "$Owner/$Repo"; defaultBranchRef = [pscustomobject]@{ name = 'main' } } }
             Mock Get-GitHubForkSyncState { $script:sync }
         }
         else {
@@ -214,7 +289,7 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
 
     It 'reuses a repository that already matches upstream' {
         if ($Provider -eq 'GitHub') {
-            $result = Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -ForkOwner owner -UpstreamGitSource $repoRoot -Reference stable -PreferredRepositoryFullName owner/shared
+            $result = Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable -PreferredRepositoryFullName owner/shared
             $result.nameWithOwner | Should -Be owner/shared
         }
         else {
@@ -227,10 +302,80 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         @(Get-ChildItem $TestDrive -Directory -Filter 'ALM4Dataverse-*').Count | Should -Be 0
     }
 
+    It 'uses the platform temporary directory when TEMP is unset' -Skip:($Provider -ne 'GitHub') {
+        $env:TEMP = $null
+
+        $result = Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable -PreferredRepositoryFullName owner/shared
+
+        $result.nameWithOwner | Should -Be owner/shared
+    }
+
+    It 'lists accessible organization repositories in the shared workflow choices' -Skip:($Provider -ne 'GitHub') {
+        Mock Get-GitHubAccessibleForksOfRepository { [pscustomobject]@{ full_name = 'first-org/shared' } }
+        Mock Get-GitHubAccessibleRepository {
+            [pscustomobject]@{ full_name = 'first-org/shared' }
+            [pscustomobject]@{ full_name = 'second-org/other' }
+        }
+        $script:repositorySelection = 0
+
+        $result = Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable
+
+        $result.nameWithOwner | Should -Be 'first-org/shared'
+        Should -Invoke Select-FromMenu -Times 1 -Exactly -ParameterFilter {
+            $Title -eq 'Select shared workflow repository' -and
+            @($Items) -contains 'Use existing fork: first-org/shared' -and
+            @($Items) -contains 'Use existing repository: second-org/other'
+        }
+    }
+
+    It 'prompts for a shared repository owner defaulting to the main repository owner for <CreationMode> creation' -ForEach @(
+        @{ CreationMode = 'Public'; CreationSelection = 0 }
+        @{ CreationMode = 'Private'; CreationSelection = 1 }
+    ) -Skip:($Provider -ne 'GitHub') {
+        Mock Get-GitHubAccessibleForksOfRepository { @() }
+        Mock Get-GitHubAccessibleRepository { @() }
+        $script:repositorySelection = 0
+        $script:ownerPromptDefault = $null
+        $script:sharedRepoCreateArgs = @()
+        Mock Read-TextWithDefault {
+            if ($Prompt -eq 'Shared workflow repository owner (user or organization)') {
+                $script:ownerPromptDefault = $DefaultValue
+                return $DefaultValue
+            }
+            return 'shared'
+        }
+        Mock Select-FromMenu {
+            if ($Title -like 'How should*') { $CreationSelection }
+            else { 0 }
+        }
+        Mock gh {
+            $script:sharedRepoCreateArgs = @($args)
+            $global:LASTEXITCODE = 0
+        }
+
+        $result = Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner main-org -UpstreamGitSource $repoRoot -Reference stable
+
+        $script:ownerPromptDefault | Should -Be 'main-org'
+        $result.nameWithOwner | Should -Be 'main-org/shared'
+        Should -Invoke Read-TextWithDefault -Times 1 -Exactly -ParameterFilter {
+            $Prompt -eq 'Shared workflow repository owner (user or organization)' -and $DefaultValue -eq 'main-org'
+        }
+        if ($CreationMode -eq 'Public') {
+            $script:sharedRepoCreateArgs | Should -Contain '--org'
+            $script:sharedRepoCreateArgs | Should -Contain 'main-org'
+            $script:sharedRepoCreateArgs | Should -Contain 'fork'
+        }
+        else {
+            $script:sharedRepoCreateArgs | Should -Contain 'create'
+            $script:sharedRepoCreateArgs | Should -Contain 'main-org/shared'
+            $script:sharedRepoCreateArgs | Should -Contain '--private'
+        }
+    }
+
     It 'fast-forwards only after approval and restores command state' {
         $script:sync.UpstreamHash = 'two'
         $script:sync.CanFastForward = $true
-        if ($Provider -eq 'GitHub') { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -ForkOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null }
+        if ($Provider -eq 'GitHub') { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null }
         else { Initialize-AzDoProjectAndRepository | Out-Null }
         Should -Invoke git -Times 1 -Exactly -ParameterFilter { $args -contains '--ff-only' }
         Should -Invoke git -Times 1 -Exactly -ParameterFilter { $args -contains 'push' }
@@ -243,7 +388,7 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
     ) {
         $script:sync.UpstreamHash = 'two'
         $script:divergenceSelection = $Selection
-        if ($Provider -eq 'GitHub') { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -ForkOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null }
+        if ($Provider -eq 'GitHub') { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null }
         else { Initialize-AzDoProjectAndRepository | Out-Null }
         if ($ExpectedCommand) {
             Should -Invoke git -Times 1 -Exactly -ParameterFilter { $args -contains $ExpectedCommand }
@@ -256,7 +401,7 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         $script:sync.UpstreamHash = 'two'
         $script:sync.CanFastForward = $true
         Mock git { $global:LASTEXITCODE = 1 }
-        if ($Provider -eq 'GitHub') { { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -ForkOwner owner -UpstreamGitSource $repoRoot -Reference stable } | Should -Throw '*merge failed*' }
+        if ($Provider -eq 'GitHub') { { Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable } | Should -Throw '*merge failed*' }
         else { { Initialize-AzDoProjectAndRepository } | Should -Throw '*merge failed*' }
         @(Get-ChildItem $TestDrive -Directory -Filter 'ALM4Dataverse-*').Count | Should -Be 0
     }
@@ -265,7 +410,7 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         $script:sync.UpstreamHash = 'two'
         if ($Provider -eq 'GitHub') {
             $script:repositorySelection = 1
-            Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -ForkOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null
+            Initialize-GitHubSharedWorkflowFork -UpstreamFullName upstream/shared -DefaultOwner owner -UpstreamGitSource $repoRoot -Reference stable | Out-Null
             Should -Invoke gh -Times 1 -Exactly -ParameterFilter { $args -contains 'create' }
             Should -Invoke git -Times 1 -Exactly -ParameterFilter { $args -contains 'reset' }
         }
@@ -284,11 +429,13 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
         Mock Read-YesNo { $Prompt -notlike 'Use ALM4Dataverse*' }
         $script:extensionsInstalled = $false
         Mock Get-VSTeamExtension { if ($script:extensionsInstalled) { [pscustomobject]@{ publisherId = 'microsoft-IsvExpTools'; extensionId = 'PowerPlatform-BuildTools'; version = '1' } } }
-        Mock Install-VSTeamExtension { $script:extensionsInstalled = $true }
+        Mock Add-VSTeamExtension { $script:extensionsInstalled = $true }
         $result = Initialize-AzDoProjectAndRepository
         $result.SelectedProject.Name | Should -Be shared
         Should -Invoke New-AzDoProject -Times 1 -Exactly -ParameterFilter { $ProjectName -eq 'shared' -and $Visibility -eq 'private' }
-        Should -Invoke Install-VSTeamExtension -Times 1 -Exactly
+        Should -Invoke Add-VSTeamExtension -Times 1 -Exactly -ParameterFilter {
+            $PublisherId -eq 'microsoft-IsvExpTools' -and $ExtensionId -eq 'PowerPlatform-BuildTools'
+        }
     }
 
     Context 'Branch publication with generated files' {
@@ -363,6 +510,9 @@ Describe 'Shared repository lifecycle in <Provider>' -ForEach @(
             $result.TargetBranch | Should -Be release
             $result.Mode | Should -Be $Mode
             if ($Mode -eq 'PullRequest') { $result.PullRequestUrl | Should -Be 'https://example.invalid/pr/7' }
+            if ($Provider -eq 'GitHub' -and $Mode -eq 'Direct' -and -not $TargetExists -and -not $DefaultExists) {
+                Should -Invoke git -Times 1 -Exactly -ParameterFilter { $args -contains '--orphan' -and $args -contains 'release' }
+            }
             (Get-Location).Path | Should -Be $originalLocation
             $ErrorActionPreference | Should -Be $originalPreference
             (Import-PowerShellDataFile (Join-Path $script:publishRoot 'alm-config.psd1')).solutions[0].name | Should -Be Example
@@ -494,6 +644,37 @@ Describe 'Repository discovery and synchronization in <Provider>' -ForEach @(
         $result.BuildValidationEnabled | Should -BeTrue
     }
 
+    It 'ignores commented checker examples when inferring BUILD validation' {
+        $script:discoveryAlmConfig = @'
+@{
+    # solutionCheck = @{
+    #     enabled = $true
+    # }
+}
+'@
+        Mock Get-GitRepoFileContentFromRemoteBranch {
+            if ($RelativePath -eq 'alm-config.psd1') { $script:discoveryAlmConfig }
+            else { '' }
+        }
+
+        $enabled = if ($Provider -eq 'GitHub') {
+            Get-GitHubBuildValidationEnabledFromRepoClone -RepoRoot $script:discoveryRoot -Branch main
+        }
+        else {
+            Get-AzDoBuildValidationEnabledFromRepoClone -RepoRoot $script:discoveryRoot -Branch main
+        }
+        $enabled | Should -BeFalse
+
+        $script:discoveryAlmConfig = '@{ solutionCheck = @{ enabled = $true } }'
+        $enabled = if ($Provider -eq 'GitHub') {
+            Get-GitHubBuildValidationEnabledFromRepoClone -RepoRoot $script:discoveryRoot -Branch main
+        }
+        else {
+            Get-AzDoBuildValidationEnabledFromRepoClone -RepoRoot $script:discoveryRoot -Branch main
+        }
+        $enabled | Should -BeTrue
+    }
+
     It 'retains the default branch when no deployment mapping exists' {
         $script:discoveryEmpty = $true
         if ($Provider -eq 'GitHub') {
@@ -537,5 +718,111 @@ Describe 'Repository discovery and synchronization in <Provider>' -ForEach @(
             { Get-AzDoSharedRepositorySyncState -RepositoryRemoteUrl https://example.invalid/shared -WorkRoot $script:discoveryRoot -UpstreamGitSource https://example.invalid/upstream -Reference stable -AccessToken fake-token } | Should -Throw '*clone*'
         }
         $ErrorActionPreference | Should -Be $originalPreference
+    }
+}
+
+Describe '<Provider> scaffold re-sync' -ForEach @(
+    @{ Provider = 'GitHub'; Script = 'setup-github.ps1' }
+    @{ Provider = 'AzDo'; Script = 'setup-azdo.ps1' }
+) {
+    BeforeAll {
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot $Script), [ref]$tokens, [ref]$parseErrors)
+        foreach ($definition in $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
+            Set-Item -Path "Function:$($definition.Name)" -Value $definition.Body.GetScriptBlock()
+        }
+    }
+
+    BeforeEach {
+        Mock Write-Section {}
+        $script:scaffoldSource = Join-Path $TestDrive "source-$([guid]::NewGuid().ToString('N'))"
+        $script:scaffoldTarget = Join-Path $TestDrive "target-$([guid]::NewGuid().ToString('N'))"
+        foreach ($relativePath in @('AGENTS.md', 'data/system/import.ps1', 'pipelines/BUILD.yml', 'pipelines/DEPLOY-main.yml', 'README-scaffold.md')) {
+            $path = Join-Path $script:scaffoldSource $relativePath
+            New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+            Set-Content -LiteralPath $path -Value "scaffold $relativePath" -NoNewline
+        }
+        New-Item -ItemType Directory -Path $script:scaffoldTarget | Out-Null
+
+        $script:invokeScaffoldSync = {
+            if ($Provider -eq 'GitHub') {
+                Copy-WorkflowTemplatesToRepo -SourceRoot $script:scaffoldSource -TargetRoot $script:scaffoldTarget -Branch main -SharedWorkflowRepository owner/shared -SharedWorkflowRef stable
+            }
+            else {
+                Sync-CopyToYourRepoIntoGitRepo -SourceRoot $script:scaffoldSource -TargetRoot $script:scaffoldTarget -RepositoryName app -SharedRepositoryName shared -Branch main
+            }
+        }
+    }
+
+    It 'creates application-owned files when missing' {
+        & $script:invokeScaffoldSync
+
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'AGENTS.md') -Raw | Should -Be 'scaffold AGENTS.md'
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'data/system/import.ps1') -Raw | Should -Be 'scaffold data/system/import.ps1'
+    }
+
+    It 'keeps customized application-owned files and still refreshes other scaffold files' {
+        foreach ($relativePath in @('AGENTS.md', 'data/system/import.ps1', 'README-scaffold.md')) {
+            $path = Join-Path $script:scaffoldTarget $relativePath
+            New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+            Set-Content -LiteralPath $path -Value 'customized' -NoNewline
+        }
+
+        & $script:invokeScaffoldSync
+
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'AGENTS.md') -Raw | Should -Be 'customized'
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'data/system/import.ps1') -Raw | Should -Be 'customized'
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'README-scaffold.md') -Raw | Should -Be 'scaffold README-scaffold.md'
+    }
+
+    It 'leaves existing Azure DevOps BUILD and DEPLOY callers for the pipeline updaters' {
+        if ($Provider -ne 'AzDo') { Set-ItResult -Skipped -Because 'GitHub callers live under .github/workflows and are covered by workflow generation tests'; return }
+        New-Item -ItemType Directory -Path (Join-Path $script:scaffoldTarget 'pipelines') | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/BUILD.yml') -Value 'customized build' -NoNewline
+        Set-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/DEPLOY-main.yml') -Value 'customized deploy' -NoNewline
+
+        & $script:invokeScaffoldSync
+
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/BUILD.yml') -Raw | Should -Be 'customized build'
+        Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/DEPLOY-main.yml') -Raw | Should -Be 'customized deploy'
+    }
+
+    It 'refreshes the Azure DevOps EXPORT caller but keeps its secretVariables block' {
+        if ($Provider -ne 'AzDo') { Set-ItResult -Skipped -Because 'GitHub secret mappings are covered by secrets-json merge tests'; return }
+        Set-Content -LiteralPath (Join-Path $script:scaffoldSource 'pipelines/EXPORT.yml') -Value @"
+resources:
+  repositories:
+    - repository: ALM4Dataverse
+      name: ALM4Dataverse
+stages:
+- template: pipelines/templates/export.yml@ALM4Dataverse
+  parameters:
+    useAlm4DataverseExtension: true
+    # secretVariables:
+"@
+        New-Item -ItemType Directory -Path (Join-Path $script:scaffoldTarget 'pipelines') | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/EXPORT.yml') -Value @"
+stages:
+- template: pipelines/templates/export.yml@ALM4Dataverse
+  parameters:
+    useAlm4DataverseExtension: true
+    secretVariables:
+    - DataverseEnvVar_contoso_APIKey
+      # nested comment
+    - DataverseEnvVar_contoso_Other
+"@
+
+        & $script:invokeScaffoldSync
+
+        $content = Get-Content -LiteralPath (Join-Path $script:scaffoldTarget 'pipelines/EXPORT.yml') -Raw
+        $content | Should -Match '(?m)^\s+name: shared\s*$'
+        $content | Should -Match '(?m)^    secretVariables:\r?\n    - DataverseEnvVar_contoso_APIKey\r?\n      # nested comment\r?\n    - DataverseEnvVar_contoso_Other\s*$'
+    }
+
+    It 'returns an empty secretVariables block for a missing caller or a caller without one' {
+        if ($Provider -ne 'AzDo') { Set-ItResult -Skipped -Because 'Azure DevOps helper only'; return }
+        Get-AzDoCallerSecretVariableBlock -Path (Join-Path $script:scaffoldTarget 'missing.yml') | Should -BeExactly ''
+        Get-AzDoCallerSecretVariableBlock -Path (Join-Path $script:scaffoldSource 'pipelines/BUILD.yml') | Should -BeExactly ''
     }
 }

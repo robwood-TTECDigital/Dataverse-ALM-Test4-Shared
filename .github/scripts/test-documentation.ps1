@@ -5,8 +5,9 @@
 .SYNOPSIS
     Validates local Markdown links, fenced examples and configuration references.
 .PARAMETER Paths
-    Explicit Markdown files; otherwise checks README, docs, TTEC documentation,
-    and the scripts README.
+    Explicit Markdown files; otherwise checks the root README, AGENTS, CONTRIBUTING
+    and SECURITY files, docs, TTEC documentation, the scaffolded AGENTS file and
+    the scripts README.
 .PARAMETER SkipCoverage
     Skips configuration/action/template reference checks, not links or examples.
 .DESCRIPTION
@@ -22,10 +23,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 if ($Paths.Count -eq 0) {
-    $Paths = @((Join-Path $repoRoot 'README.md')) +
+    $Paths = @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md' | ForEach-Object { Join-Path $repoRoot $_ }) +
         @(Get-ChildItem (Join-Path $repoRoot 'docs') -Filter '*.md' -Recurse | Select-Object -ExpandProperty FullName) +
         @(Get-ChildItem (Join-Path $repoRoot 'ttec-digital/docs') -Filter '*.md' -Recurse | Select-Object -ExpandProperty FullName) +
-        @((Join-Path $PSScriptRoot 'README.md'))
+        @((Join-Path $repoRoot 'copy-to-your-repo/AGENTS.md'), (Join-Path $PSScriptRoot 'README.md'))
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
