@@ -31,7 +31,7 @@
         # 3.4.0 fixes connection handling in the export comparison cmdlets.
         "Rnwood.Dataverse.Data.PowerShell" = "3.4.0"
         # Pin Az.Accounts to avoid Azure assembly conflicts with Dataverse PowerShell.
-        "Az.Accounts" = "5.5.0"
+        "Az.Accounts" = "5.5.4"
         "Az.ManagementPartner" = "0.8.0"
     }
 
