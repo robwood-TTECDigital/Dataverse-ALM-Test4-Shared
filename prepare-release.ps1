@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -16,7 +16,7 @@
     Directory where the processed scripts will be written
 
 .PARAMETER UpstreamRepo
-    (Optional) URL of the upstream repository. Defaults to https://github.com/ALM4Dataverse/ALM4Dataverse.git
+    (Optional) URL of the upstream repository. Defaults to https://github.com/ttecdigital-msba-emea/Dataverse-ALM.git
 
 .EXAMPLE
     .\prepare-release.ps1 -TagName v1.2.3 -OutputDir ./release
@@ -34,7 +34,7 @@ param(
     [string]$OutputDir,
 
     [Parameter(Position = 2)]
-    [string]$UpstreamRepo = 'https://github.com/ALM4Dataverse/ALM4Dataverse.git'
+    [string]$UpstreamRepo = 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM.git'
 )
 
 Set-StrictMode -Version Latest

@@ -6,7 +6,7 @@ pull request merged.
 ## Questions, Bugs And Ideas
 
 - **Questions and "how do I" help:** start a
-  [discussion](https://github.com/ALM4Dataverse/ALM4Dataverse/discussions). Check the
+  [discussion](https://github.com/ttecdigital-msba-emea/Dataverse-ALM/discussions). Check the
   [FAQs](docs/faqs.md) and [troubleshooting](docs/usage/troubleshooting.md) first.
 - **Bugs:** open an issue using the bug template. Include the shared ref, platform,
   operation and the first failing log lines, with secrets and identifiers removed.

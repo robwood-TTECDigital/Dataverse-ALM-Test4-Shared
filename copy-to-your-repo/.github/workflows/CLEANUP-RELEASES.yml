@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   cleanup:
-    uses: ALM4Dataverse/ALM4Dataverse/.github/workflows/cleanup-releases.yml@main
+    uses: ttecdigital-msba-emea/Dataverse-ALM/.github/workflows/cleanup-releases.yml@main
     permissions:
       contents: write
     with:

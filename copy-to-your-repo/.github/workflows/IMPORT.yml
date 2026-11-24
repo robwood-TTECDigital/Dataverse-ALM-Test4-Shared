@@ -27,7 +27,7 @@ jobs:
       contents: read
     steps:
       - name: Import
-        uses: ALM4Dataverse/ALM4Dataverse/.github/actions/import@main
+        uses: ttecdigital-msba-emea/Dataverse-ALM/.github/actions/import@main
         with:
           environment-name: ${{ format('Dev-{0}', github.ref_name) }}
           vars-json: ${{ toJSON(vars) }}

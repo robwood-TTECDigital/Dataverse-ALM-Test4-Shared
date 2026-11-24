@@ -94,7 +94,7 @@ if ($rnwoodDataverseVersion -like '__*') {
         $config = Import-PowerShellDataFile -Path $configPath
         $rnwoodDataverseVersion = $config.scriptDependencies.'Rnwood.Dataverse.Data.PowerShell'
     } else {
-        throw "This script appears to be running in development mode but alm-config-defaults.psd1 was not found at $configPath. Please download the released version from https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-github.ps1"
+        throw "This script appears to be running in development mode but alm-config-defaults.psd1 was not found at $configPath. Please download the released version from https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-github.ps1"
     }
 }
 
@@ -108,7 +108,7 @@ if ($upstreamRepo -like '__*') {
         $upstreamRepo = $PSScriptRoot
     } else {
         Write-Host "Development mode: Using default GitHub URL as upstream repo" -ForegroundColor Yellow
-        $upstreamRepo = 'https://github.com/ALM4Dataverse/ALM4Dataverse.git'
+        $upstreamRepo = 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM.git'
     }
 }
 
@@ -1633,7 +1633,7 @@ function Resolve-GitHubRepoFullNameFromSource {
     [OutputType([string])]
     param(
         [Parameter()][string]$Source,
-        [Parameter()][string]$Fallback = 'ALM4Dataverse/ALM4Dataverse'
+        [Parameter()][string]$Fallback = 'ttecdigital-msba-emea/Dataverse-ALM'
     )
 
     if (-not [string]::IsNullOrWhiteSpace($Source)) {
@@ -3707,7 +3707,7 @@ function Copy-WorkflowTemplatesToRepo {
             $content = Get-Content -LiteralPath $sourceFileToUse -Raw
             $updatedContent = [Regex]::Replace(
                 $content,
-                'ALM4Dataverse/ALM4Dataverse/\.github/actions/([A-Za-z0-9._-]+)@[A-Za-z0-9._/\-]+',
+                'ttecdigital-msba-emea/Dataverse-ALM/\.github/actions/([A-Za-z0-9._-]+)@[A-Za-z0-9._/\-]+',
                 {
                     param($m)
                     return "$SharedWorkflowRepository/.github/actions/$($m.Groups[1].Value)@$SharedWorkflowRef"
@@ -5771,7 +5771,7 @@ Assert-ValidTenantIdentifier -TenantIdentifier $TenantId -Source 'Resolved Azure
 Write-Section `
     -Message "Ensuring Shared Workflow Repository"
 
-$upstreamWorkflowRepoFullName = Resolve-GitHubRepoFullNameFromSource -Source $upstreamRepo -Fallback 'ALM4Dataverse/ALM4Dataverse'
+$upstreamWorkflowRepoFullName = Resolve-GitHubRepoFullNameFromSource -Source $upstreamRepo -Fallback 'ttecdigital-msba-emea/Dataverse-ALM'
 $upstreamGitSource = Resolve-UpstreamGitRemoteSource -ConfiguredSource $upstreamRepo -GitHubFullName $upstreamWorkflowRepoFullName
 
 Write-Host "Upstream workflow source: $upstreamWorkflowRepoFullName" -ForegroundColor DarkGray
