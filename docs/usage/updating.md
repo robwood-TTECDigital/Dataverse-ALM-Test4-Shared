@@ -21,7 +21,7 @@ solutions, data hooks, and authentication before rolling them out across applica
 ## Update An Application
 
 1. Record the current shared ref, successful production build identities, target settings, and required backups. Retain artifacts needed for recovery/baseline validation.
-2. Review the [upgrade notes](upgrade-notes.md) and upstream [release notes](https://github.com/ALM4Dataverse/ALM4Dataverse/releases), and compare changed caller files, default settings, action/template inputs, and hook behavior.
+2. Review the [upgrade notes](upgrade-notes.md) and upstream [release notes](https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases), and compare changed caller files, default settings, action/template inputs, and hook behavior.
 3. Update shared references and any required caller/configuration changes on a reviewable application branch.
 4. Run EXPORT/IMPORT only against intended development targets. BUILD a new package and exercise checker/baseline validation where configured.
 5. Deploy the exact new build to a representative non-production target. Verify upgrades, data changes, connections, ownership, and a repeated deployment.

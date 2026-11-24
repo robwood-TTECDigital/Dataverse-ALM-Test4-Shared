@@ -34,7 +34,7 @@ Open PowerShell in an empty working folder, download the released setup script, 
 read it before running it:
 
 ```powershell
-Invoke-WebRequest 'https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-github.ps1' -OutFile './setup-github.ps1'
+Invoke-WebRequest 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-github.ps1' -OutFile './setup-github.ps1'
 .\setup-github.ps1
 ```
 

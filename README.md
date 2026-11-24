@@ -2,6 +2,11 @@
 
 ![ALM4Dataverse](logo.png)
 
+> [!IMPORTANT]
+> The permanent home for this project is now
+> [ttecdigital-msba-emea/Dataverse-ALM](https://github.com/ttecdigital-msba-emea/Dataverse-ALM).
+> Azure DevOps users should update their remotes and links to the GitHub repository.
+
 Source-controlled application lifecycle management for Microsoft Dataverse, using
 **Azure DevOps** or **GitHub Actions (PREVIEW)**. Export maker changes, build a numbered
 deployment package, and promote that same package through your environments.

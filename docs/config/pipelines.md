@@ -6,7 +6,7 @@ Use this reference when customizing the supplied callers. For ordinary operation
 
 The [caller workflows](../../copy-to-your-repo/.github/workflows) own triggers, jobs, runners, permissions, environment selection, timeouts, concurrency, and secret selection. The shared actions own the steps inside each job. These are composite actions invoked from `steps`, not reusable workflows invoked directly from `jobs`.
 
-The templates reference `ALM4Dataverse/ALM4Dataverse/.github/actions/<action>@main`.
+The templates reference `ttecdigital-msba-emea/Dataverse-ALM/.github/actions/<action>@main`.
 Automated setup substitutes its selected ALM4Dataverse ref.
 
 > [!TIP]
