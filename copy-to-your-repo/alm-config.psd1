@@ -1,4 +1,4 @@
-@{
+﻿@{
     # ALM for Dataverse configuration
     #
     # Paths in this file are relative to the directory this file is in (the repo root).
@@ -16,6 +16,34 @@
     #   '[alm]/custom-hooks/myScript.ps1' -> executes the script from the fork's copy of ALM4Dataverse
     # This is useful for running custom hook scripts provided by the ALM4Dataverse fork.
     # The placeholder is replaced with the absolute path to the ALM repo root before execution.
+
+    # Repository setup metadata. Setup writes provider as 'GitHub' or 'azDO';
+    # repository uses the selected provider's format and ref identifies the shared source ref.
+    provider = ''
+    repository = ''
+    ref = ''
+
+    # GitHub setup options; ignored by Azure DevOps setup.
+    GitHubUseEnvironments = $true
+    GitHubDeploymentPromotionMode = 'manual-gate-tag'
+    GitHubUseRepositoryVariablePrefix = $true
+    GitHubUseImmutableWifSubject = $false
+
+    # Azure DevOps setup options; ignored by GitHub setup.
+    azDOUseAlm4DataverseExtension = $true
+
+    # Branch-specific environment and BUILD validation configuration.
+    # Environment names refer to credentials configured in the selected provider.
+    branches = @{
+        # main = @{
+        #     developmentEnvironment = 'Dev-main'
+        #     deploymentEnvironments = @('TEST', 'PROD')
+        #     buildValidation = @{
+        #         environmentName = 'Build-main'
+        #         baselineRelease = '@TEST'
+        #     }
+        # }
+    }
 
     # Solutions to process, in dependency order.
     # Each entry is a hashtable with keys
@@ -40,13 +68,6 @@
     #   Dataverse application-user permissions alone don't grant access to that API.
     # - solutionCheck: (optional) per-solution PAC checker settings merged with global solutionCheck
     #   settings below. Use enabled = $false to skip checker for a specific solution.
-    #
-    ### BEGIN TTEC Digital-specific solution settings
-    # - validationMode: (optional) 'error' (default), 'warning', or 'disabled' for solution validation rules.
-    # - skipValidationRules: (optional) array of maps with required ruleName and mode ('skip', 'warning', or 'error').
-    #   Optional componentType (integer), componentId (GUID), and componentSchemaName (string) target components.
-    #   See ttec-digital/docs/solution-validation.md#component-specific-configuration.
-    ### END TTEC Digital-specific solution settings
     solutions = @(
         # Example:
         # @{
@@ -89,17 +110,6 @@
         #     )
         #     failThreshold = 'High'
         #   }
-        #
-        ### BEGIN TTEC Digital-specific solution settings
-        #
-        #   validationMode = 'warning'
-        #   skipValidationRules = @(
-        #     @{ ruleName = 'SolutionUsesSystemPublisher'; mode = 'skip' }
-        #     @{ ruleName = 'ComponentInMoreThanOneUnmanagedSolution'; componentType = 1; componentId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'; mode = 'warning' }
-        #     @{ ruleName = 'ComponentSchemaNamePrefixDoesNotMatchPublisherPrefix'; componentType = 1; componentSchemaName = 'legacy_customtable'; mode = 'warning' }
-        #   )
-        #
-        ### END TTEC Digital-specific solution settings
         # }
     )
 
@@ -111,10 +121,6 @@
     # Values may be static or trusted scriptblocks emitting exactly one value.
     # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
     organizationSettings = @{}
-
-    # Azure management partner linked to the Azure identity before solution imports.
-    # Set to an empty string to disable partner-link management.
-    partnerId = 6479631
 
     # Organization-table columns applied after the postDeploy hook.
     # Example: @{ IsCustomControlsInCanvasAppsEnabled = $false }
@@ -156,7 +162,6 @@
     # Values may be static or trusted scriptblocks emitting exactly one value.
     # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions; EnvironmentId }.
     postDeployPowerPlatformSettings = @{}
-
     # Node.js version used only when BUILD or IMPORT includes configured codeApps.
     # A major version (for example '22') accepts an installed compatible release or installs the latest stable patch.
     # An exact version (for example '22.14.0') pins the release.
@@ -188,6 +193,8 @@
 
     # Build-command and packing stages each use maxParallel (1..8), independently
     # of solutionCheck.maxParallel. parallel = $false makes both stages sequential.
+    # The version guard prevents different solution contents sharing one version;
+    # set to $false only to disable that collision check.
     build = @{
         parallel = $true
         maxParallel = 2
@@ -293,10 +300,12 @@
     # Increase this value if solution imports time out in large or complex environments.
     # importTimeoutSeconds = 10800
 
-    # Optional BUILD validation baseline.
+    # Legacy BUILD validation baseline. Set baselines per branch with
+    # branches.<branch>.buildValidation.baselineRelease instead. This value applies
+    # only to branches whose entry has no baselineRelease key; setup migrates it
+    # into branch settings for repositories that predate the branches map.
     # Empty string deploys only the current build; an Azure DevOps BUILD run ID
     # or build number, or GitHub BUILD run ID/release tag selects a fixed baseline.
-    # GitHub run IDs resolve to Release assets, not expiring Actions artifacts.
     # '@environment-name' selects the most recently successful BUILD release
     # deployed to that environment.
     buildValidation = @{
@@ -329,110 +338,4 @@
     #     )
     #     maxParallel = 4
     # }
-
-    ### BEGIN TTEC Digital-specific configuration
-    # Optional values consumed by the bundled TTEC hooks; empty values are inactive.
-
-    # LEGACY: Prefer data hooks and the standard data asset workflow for new projects;
-    # see docs/config/example-hooks/data-import-export.md.
-    # Array form exports/deploys each named data folder. Map form sets the deployment stage.
-    # DataSets = @('configuration', 'reference')
-    # DataSets = @{ configuration = @{ Stage = 'BeforeTeams' }; reference = @{} }
-    DataSets = @()
-
-    # LEGACY: Set environment-specific values with DATAVERSEENVVAR_<schema-name> variables instead.
-    # Schema name -> default value; DATAVERSEENVVAR_<schema-name> overrides it.
-    # DefaultEnvVarValues = @{ contoso_DefaultRegion = 'west' }
-    DefaultEnvVarValues = @{}
-
-    # Artifact-relative packages imported before/after data and team operations.
-    # DependencySolutions = @('solutions/ContosoShared_managed.zip')
-    DependencySolutions = @()
-
-    # PostDependencySolutions = @('solutions/ContosoReporting_managed.zip')
-    PostDependencySolutions = @()
-
-    # ExternalDependencySolutionNames = @('ContosoShared')
-    ExternalDependencySolutionNames = @()
-
-    # ExternalDependencySolutionNames = @('ContosoShared')
-    # IgnoreSolutions = @('ContosoLegacy')
-    IgnoreSolutions = @()
-
-    # LEGACY: Use organizationSettings or orgDbOrgSettings for the shared settings capability;
-    # see docs/config/alm-config.md#organization-settings.
-    # Organization-table logical attribute name -> value, applied by preDeploy.
-    # OrgSettings = @{ isexternalsearchindexenabled = $true }
-    OrgSettings = @{}
-
-    # Team entries identify the business unit, team and role names; an empty
-    # BusinessUnitName selects the root business unit. IDs must be GUIDs.
-    # AadGroupId may use a $(Name) placeholder backed by CONFIG_Name.
-    # AadGroupTeams = @(
-    #     @{ BusinessUnitName = ''; TeamId = '00000000-0000-0000-0000-000000000001'; TeamName = 'Managers'; AadGroupId = '$(ManagersGroupId)'; RoleNames = @('Basic User') }
-    # )
-    AadGroupTeams = @()
-
-    # Access teams use BusinessUnitName, TeamId and TeamName.
-    # AccessTeams = @(@{ BusinessUnitName = ''; TeamId = '00000000-0000-0000-0000-000000000002'; TeamName = 'Case Readers' })
-    AccessTeams = @()
-
-    # ApplicationId, BusinessUnitName and RoleNames; ApplicationId supports $(Name).
-    # ApplicationUsers = @(@{ ApplicationId = '$(IntegrationAppId)'; BusinessUnitName = ''; RoleNames = @('Basic User') })
-    ApplicationUsers = @()
-
-    # BusinessUnitName and RoleNames; empty BusinessUnitName selects the root BU.
-    # BuDefaultTeams = @(@{ BusinessUnitName = ''; RoleNames = @('Basic User') })
-    BuDefaultTeams = @()
-
-    # Canvas app UniqueName and AadGroupIds; configured groups replace existing sharing.
-    # CanvasAppSharing = @(@{ UniqueName = 'contoso_customerportal'; AadGroupIds = @('$(ReadersGroupId)') })
-    CanvasAppSharing = @()
-
-    # Flow WorkflowId and AadGroupIds; configured groups replace existing sharing.
-    # FlowSharing = @(@{ WorkflowId = '00000000-0000-0000-0000-000000000003'; AadGroupIds = @('$(ReadersGroupId)') })
-    FlowSharing = @()
-
-    # Owner teams use BusinessUnitName, TeamId, TeamName and RoleNames.
-    # OwnerTeams = @(@{ BusinessUnitName = ''; TeamId = '00000000-0000-0000-0000-000000000004'; TeamName = 'Case Owners'; RoleNames = @('Basic User') })
-    OwnerTeams = @()
-
-    # PluginStepId and SecureConfig; SecureConfig supports $(Name) placeholders.
-    # PluginSteps = @(@{ PluginStepId = '00000000-0000-0000-0000-000000000005'; SecureConfig = '$(PluginSecret)' })
-    PluginSteps = @()
-
-    # LEGACY: Use solution-aware Power Pages deployment instead of this separate portal map;
-    # see docs/usage/adding-dataverse-components.md#solutions.
-    # Portal unique name -> website ID. PORTALCONFIG_<name> supplies profile values.
-    # Portals = @{ customerportal = '00000000-0000-0000-0000-000000000006' }
-    Portals = @{}
-
-    # Synapse folder names and repository URL enable Synapse asset integration.
-    # See ttec-digital/docs/azure-synapse.md for complete examples.
-    # SynapseFolders = @('DataverseIntegration')
-    SynapseFolders = @()
-
-    # SynapseRepositoryUrl = 'https://dev.azure.com/example/project/_git/Synapse'
-    SynapseRepositoryUrl = ''
-
-    # Include/exclude wildcard patterns for linked services.
-    # SynapseLinkedServicesInclude = @('ls-dataverse-*')
-    SynapseLinkedServicesInclude = @()
-
-    # SynapseLinkedServicesExclude = @('*WorkspaceDefault*', 'ls-legacy-*')
-    SynapseLinkedServicesExclude = @()
-
-    # Each endpoint has Name and Definition; both support $(Name) deployment placeholders.
-    # SynapseManagedPrivateEndpoints = @(
-    #     @{ Name = 'endpoint-example'; Definition = '{"type":"Microsoft.Synapse/workspaces/managedVirtualNetworks/managedPrivateEndpoints","properties":{"privateLinkResourceId":"$(DataverseResourceId)","groupId":"dataverse"}}' }
-    # )
-    SynapseManagedPrivateEndpoints = @()
-
-    # Validation rule settings are independent of the PAC solutionCheck settings above.
-    # maxParallel accepts 1..8; parallel = $false runs rules sequentially.
-    validation = @{
-        parallel = $true
-        maxParallel = 4
-    }
-    ### END TTEC Digital-specific configuration
 }

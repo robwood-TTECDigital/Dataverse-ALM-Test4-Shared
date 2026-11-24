@@ -21,42 +21,11 @@ solutions, data hooks, and authentication before rolling them out across applica
 ## Update An Application
 
 1. Record the current shared ref, successful production build identities, target settings, and required backups. Retain artifacts needed for recovery/baseline validation.
-2. Review the [upgrade notes](upgrade-notes.md) and upstream [release notes](https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases), and compare changed caller files, default settings, action/template inputs, and hook behavior.
+2. Review the [upgrade notes](upgrade-notes.md) and upstream [release notes](https://github.com/ALM4Dataverse/ALM4Dataverse/releases), and compare changed caller files, default settings, action/template inputs, and hook behavior.
 3. Update shared references and any required caller/configuration changes on a reviewable application branch.
 4. Run EXPORT/IMPORT only against intended development targets. BUILD a new package and exercise checker/baseline validation where configured.
 5. Deploy the exact new build to a representative non-production target. Verify upgrades, data changes, connections, ownership, and a repeated deployment.
 6. Promote that same build through normal controls, then roll out the shared update to other consumers.
-
-### Version-update pull request format
-
-For a shared ALM4Dataverse version update, use the title:
-`Update ALM4Dataverse from v<previous> to v<target>`.
-
-Use these body headings in order:
-
-1. `## End-user changes` — begin with
-   `GitHub release changes from v<previous> to v<target>:` and link the previous
-   and target release notes. Summarize release-level user impact here; keep fork
-   implementation and comparison details out of this section.
-2. `## Fork comparison` — give the source-ref audit at per-file level, or group
-   files only when an entire folder shares one rationale. Explain every directly
-   edited framework file separately, including its behavior, tests, and upstream
-   PR or proprietary justification. Do not summarize Code App framework changes
-   as an unexplained category.
-3. `## Implementation details` — describe internal compatibility and design work.
-4. `## Validation` — list commands, results, and known limitations.
-
-### Fork difference audit
-
-Before merging an ALM4Dataverse update, compare the fork HEAD with the exact
-ALM4Dataverse source commit or tag being adopted. Inventory every differing file
-and hunk, and classify each difference as upstream-compatible, documented
-proprietary config/hook/asset, framework-required, upstream candidate, or
-unexpected. Prefer configuration and hooks over framework changes; record the
-evidence and every unresolved item, include the per-file summary under
-`## Fork comparison` in the PR description, and submit non-proprietary fixes
-upstream. An audit with unresolved items must be reported as unresolved rather
-than passed.
 
 > [!IMPORTANT]
 > Updating the caller or shared repository does not patch old Release assets. Existing
@@ -100,14 +69,18 @@ settings:
 
 - `alm-config.psd1`, which is merged with your solution selection rather than replaced.
 - `AGENTS.md` and everything under `data/`, which are created only when missing.
-- On GitHub: the existing `DEPLOY-<branch>` workflow (only its environment jobs are
-  updated) and `secrets-json` mappings in every workflow.
+- On GitHub: `secrets-json` mappings in every workflow.
 - On Azure DevOps: `secretVariables` lists in BUILD, EXPORT and IMPORT, and extra stage
   parameters for DEPLOY environments that remain selected.
 
 Other scaffold files that differ from the release are replaced. That includes BUILD,
-which setup regenerates on both platforms, and any other edits to EXPORT, IMPORT or
-CLEANUP-RELEASES callers.
+EXPORT and IMPORT, which setup regenerates from `alm-config.psd1` on both platforms, and
+every `DEPLOY-<branch>` caller. To apply committed configuration changes, run
+`setup-github.ps1 -ApplyConfig` or `setup-azdo.ps1 -ApplyConfig`, or run the APPLY-CONFIG
+pipeline or workflow in the repository, which opens a pull request with the regenerated
+files. On GitHub, the built-in token cannot change workflow files, so the pull request puts
+them in `replace-github-workflows/`. Replace `.github/workflows` with that folder and commit,
+or BUILD fails; see [apply configuration](../config/github-secrets.md#apply-configuration).
 
 > [!CAUTION]
 > Setup is not a generic merge tool for arbitrary customization. If interrupted, inspect
@@ -117,7 +90,7 @@ CLEANUP-RELEASES callers.
 
 - **Application configuration:** solution order/options, assets, checker settings, module versions, and import timeout belong in the application data file.
 - **Hooks:** use the documented lifecycle points for data or organization changes. Package deployment scripts as assets, fail clearly, and make retries safe.
-- **Caller customization:** choose branches, environments, permissions, approvals, concurrency, and runtime secret mappings in the platform caller.
+- **Caller customization:** choose permissions, approvals, concurrency, and runtime secret mappings in the platform. Branches, environments and deployment targets belong in `alm-config.psd1`; setup regenerates the callers from it.
 - **Shared fork:** change reusable behavior only when configuration/hooks are insufficient, and regression-test all affected consumers.
 
 > [!NOTE]

@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
     function Invoke-TestPac {
@@ -24,39 +24,68 @@ Describe 'ALM configuration loading' {
         $config.buildVersion.branches | Should -BeOfType [hashtable]
     }
 
-    It 'ships defaults and template entries for fork-owned hook settings' {
-        $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
-        $template = Import-PowerShellDataFile (Join-Path $repoRoot 'copy-to-your-repo/alm-config.psd1')
-        $partnerHook = '[alm]/ttec-digital/predeploy-management-partner.ps1'
-        $defaults.partnerId | Should -Be 6479631
-        $defaults.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'
-        $defaults.scriptDependencies['Az.ManagementPartner'] | Should -Be '0.8.0'
-        $defaults.scriptDependencies['Rnwood.Dataverse.Data.PowerShell'] | Should -Be '3.4.0'
-        $template.partnerId | Should -Be 6479631
-        $defaults.hooks.preDeploy[0] | Should -Be $partnerHook
-        $defaults.hooks.preDeploy | Should -Contain '[alm]/ttec-digital/predeploy.ps1'
-        $defaults.hooks.postDeploy | Should -Contain '[alm]/ttec-digital/postdeploy.ps1'
-        $defaults.hooks.postDeploy | Should -Not -Contain $partnerHook
-        $forkSettings = @(
-            'DataSets', 'DefaultEnvVarValues', 'DependencySolutions',
-            'ExternalDependencySolutionNames', 'IgnoreSolutions', 'OrgSettings',
-            'PostDependencySolutions', 'AadGroupTeams',
-            'AccessTeams', 'ApplicationUsers', 'BuDefaultTeams', 'CanvasAppSharing',
-            'FlowSharing', 'OwnerTeams', 'PluginSteps', 'Portals', 'SynapseFolders',
-            'SynapseRepositoryUrl', 'SynapseLinkedServicesInclude',
-            'SynapseLinkedServicesExclude', 'SynapseManagedPrivateEndpoints',
-            'validation'
-        )
-
-        foreach ($setting in $forkSettings) {
-            $defaults.ContainsKey($setting) | Should -BeTrue -Because "$setting must have a shared default"
-            $template.ContainsKey($setting) | Should -BeTrue -Because "$setting must be exposed in the copied configuration"
-        }
-    }
-
     It 'pins Az.Accounts to a Dataverse-compatible version' {
         $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
         $defaults.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'
+    }
+}
+
+Describe 'Branch BUILD validation settings' {
+    It 'resolves per-branch environments and inherits or overrides the legacy baseline' {
+        $config = @{
+            buildValidation = @{ baselineRelease = '@GLOBAL' }
+            branches = @{
+                main = @{ buildValidation = @{ environmentName = ' Build-main '; baselineRelease = '@TEST' } }
+                develop = @{ buildValidation = @{ environmentName = 'Build-develop' } }
+            }
+        }
+
+        $main = Get-AlmBuildValidationConfiguration -Config $config -BranchName 'MAIN'
+        $main.Enabled | Should -BeTrue
+        $main.EnvironmentName | Should -Be Build-main
+        $main.BaselineRelease | Should -Be '@TEST'
+
+        $develop = Get-AlmBuildValidationConfiguration -Config $config -BranchName develop
+        $develop.Enabled | Should -BeTrue
+        $develop.EnvironmentName | Should -Be Build-develop
+        $develop.BaselineRelease | Should -Be '@GLOBAL'
+    }
+
+    It 'matches Azure DevOps refs/heads values against configured branch names' {
+        $config = @{
+            branches = @{
+                'release/1.x' = @{ buildValidation = @{ environmentName = 'Build-release'; baselineRelease = '@RELEASE' } }
+            }
+        }
+
+        $validation = Get-AlmBuildValidationConfiguration -Config $config -BranchName 'refs/heads/release/1.x'
+        $validation.Enabled | Should -BeTrue
+        $validation.EnvironmentName | Should -Be 'Build-release'
+        $validation.BaselineRelease | Should -Be '@RELEASE'
+    }
+
+    It 'treats an explicit empty baseline as an override and keeps unconfigured branches disabled' {
+        $config = @{
+            buildValidation = @{ baselineRelease = '@GLOBAL' }
+            branches = @{ main = @{ buildValidation = @{ environmentName = ''; baselineRelease = '' } } }
+        }
+
+        $main = Get-AlmBuildValidationConfiguration -Config $config -BranchName main
+        $main.Enabled | Should -BeFalse
+        $main.BaselineRelease | Should -Be ''
+
+        $other = Get-AlmBuildValidationConfiguration -Config $config -BranchName feature
+        $other.Enabled | Should -BeFalse
+        $other.BaselineRelease | Should -Be '@GLOBAL'
+    }
+
+    It 'rejects malformed branch validation shapes' {
+        { Get-AlmBuildValidationConfiguration -Config @{ branches = @('main') } -BranchName main } |
+            Should -Throw '*branches setting must be a hashtable*'
+        { Get-AlmBuildValidationConfiguration -Config @{ branches = @{ main = 'invalid' } } -BranchName main } |
+            Should -Throw '*Configuration for branch*must be a hashtable*'
+        { Get-AlmBuildValidationConfiguration -Config @{ branches = @{ main = @{ buildValidation = 'invalid' } } } -BranchName main } |
+            Should -Throw '*BUILD validation configuration*must be a hashtable*'
     }
 }
 

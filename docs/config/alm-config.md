@@ -43,32 +43,119 @@ The supplied template additionally includes the `data` asset and example data ho
 | `solutions` | Array of hashtables | Empty in the template; list solutions in dependency order. Each entry can set `mappings`, `codeApps`, `deployUnmanaged` and other per-solution options. |
 | `buildVersion` | Hashtable | Shared default is `'1.0'`; optional MAJOR.MINOR override and full-branch overrides. |
 | `export` | Hashtable | Up to two concurrent package exports; a shared limit of four operations with version updates. |
-| `build` | Hashtable | Build commands and solution packing run in parallel; up to two at once, with version collision checking enabled. |
+| `build` | Hashtable | Parallel build commands and packing (two at a time); version collision guard enabled. |
 | `assets` | Array of paths | `@('data')` in the template. |
 | `hooks` | Hashtable of script-path arrays | Empty except the template's `postExport` and `postDeploy` data hooks. |
 | `organizationSettings`, `orgDbOrgSettings` | Hashtable of setting names to values | Empty; applied before deployment. |
 | `postDeployOrganizationSettings`, `postDeployOrgDbOrgSettings` | Hashtable of setting names to values | Empty; applied after the `postDeploy` hook. |
 | `powerPlatformSettings` | Hashtable of setting names to values | Empty; patched before deployment through the Power Platform API. |
 | `postDeployPowerPlatformSettings` | Hashtable of setting names to values | Empty; patched after the `postDeploy` hook. |
-| `partnerId` | Numeric Azure management partner ID, or empty to disable | `6479631`; the shared preDeploy hook links the deployment identity to this Azure MPN partner. Set to `''` to disable. |
-| `scriptDependencies` | Hashtable of module names and versions | `Az.Accounts = '5.5.0'` (pinned to avoid Azure assembly conflicts with Dataverse PowerShell); `Az.ManagementPartner = '0.8.0'`; `Rnwood.Dataverse.Data.PowerShell = '3.4.0'`. |
-| `pacCliVersion` | String | `'2.13.1'`. |
-| `nodeVersion` | String | `'22'`; used only by BUILD/IMPORT when at least one solution configures `codeApps`. |
+| `scriptDependencies` | Hashtable of module names and versions | `Az.Accounts = '5.5.0'` (pinned to avoid Azure assembly conflicts with Dataverse PowerShell); `Rnwood.Dataverse.Data.PowerShell = '3.4.0'`. |
+| `pacCliVersion` | String | `'2.16.1'`. |
+| `nodeVersion` | String | `'26'`; used only by BUILD/IMPORT when at least one solution configures `codeApps`. |
 | `importTimeoutSeconds` | Number of seconds | `10800` per import. |
-| `buildValidation.baselineRelease` | String | `''`; no baseline. |
+| `provider` | String | Empty until setup; `GitHub` or `azDO`. |
+| `repository`, `ref` | Strings | Shared ALM4Dataverse repository and source ref used by generated callers. |
+| `GitHubUseEnvironments` | Boolean | `$true`; use GitHub environments for credential scoping. |
+| `GitHubDeploymentPromotionMode` | String | `'manual-gate-tag'`; or `'environment-approval'`. |
+| `GitHubUseRepositoryVariablePrefix` | Boolean | `$true`; prefix repository-level variables by environment. |
+| `GitHubUseImmutableWifSubject` | Boolean | `$false`; use immutable owner/repository IDs in GitHub OIDC subjects. |
+| `azDOUseAlm4DataverseExtension` | Boolean | `$true`; use the ALM4Dataverse Azure DevOps extension. |
+| `branches` | Hashtable keyed by branch name | Per-branch development, deployment, and BUILD-validation environment names. |
+| `branches.<branch>.buildValidation.baselineRelease` | String | `''`; no baseline for that branch. |
+| `buildValidation.baselineRelease` | String | Legacy fallback for configurations without a branch-specific baseline. |
 | `solutionCheck` | Hashtable | Disabled; full settings below. |
 
 ## Configuration Sections
 
-### Azure Management Partner
+### Setup Metadata and Branch Environments
 
-The shared default `partnerId` is `6479631`. During deployment, ALM4Dataverse
-uses the [Az.ManagementPartner module](https://learn.microsoft.com/en-us/powershell/module/az.managementpartner/)
-to create the link when none exists or update it when the current link has a
-different ID from the shared `preDeploy` hook, before solution imports. A
-matching link is left unchanged. Set `partnerId = ''` to skip partner-link
-management. Azure login must already be established in the deployment process,
-and the identity must be authorized to manage its partner association.
+The setup scripts store provider and repository-generation settings in
+`alm-config.psd1`. They use these values to seed future edits and generate the
+provider caller files. GitHub and Azure DevOps share `provider`, `repository`, and
+`ref`; provider-specific options remain flat and use the `GitHub` or `azDO` prefix.
+
+`repository` identifies the shared ALM4Dataverse source repository, not the
+application repository. For GitHub it is an `owner/repository` name; for Azure
+DevOps it is the shared repository name. `ref` is the shared source branch/ref.
+The exact branch names under `branches` identify application branches and must
+match the branches used by the provider.
+
+Each `branches.<branch>` entry can set:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `developmentEnvironment` | String | Provider environment used by DEV/EXPORT for that branch; `''` disables it. |
+| `deploymentEnvironments` | Array of strings | Ordered deployment stages for that branch; `@()` means no DEPLOY workflow/pipeline. |
+| `buildValidation.environmentName` | String | BUILD validation environment for that branch; `''` disables validation there. |
+| `buildValidation.baselineRelease` | String | Optional baseline selector used by BUILD for that branch. |
+
+For example:
+
+```powershell
+@{
+    provider = 'GitHub'
+    repository = 'contoso/ALM4Dataverse'
+    ref = 'main'
+    GitHubUseEnvironments = $true
+    GitHubDeploymentPromotionMode = 'environment-approval'
+    GitHubUseRepositoryVariablePrefix = $true
+    GitHubUseImmutableWifSubject = $false
+    branches = @{
+        main = @{
+            developmentEnvironment = 'Dev-main'
+            deploymentEnvironments = @('TEST', 'PROD')
+            buildValidation = @{
+                environmentName = 'Build-main'
+                baselineRelease = '@TEST'
+            }
+        }
+        release = @{
+            developmentEnvironment = 'Dev-release'
+            deploymentEnvironments = @('PROD')
+            buildValidation = @{
+                environmentName = ''
+                baselineRelease = ''
+            }
+        }
+    }
+}
+```
+
+For Azure DevOps, set `provider = 'azDO'`, use the shared Azure DevOps repository
+name in `repository`, set its branch in `ref`, and use
+`azDOUseAlm4DataverseExtension` instead of the GitHub-specific options. Do not put
+credentials, tenant IDs, or environment URLs in this metadata; setup stores
+credential values in the provider's environment configuration.
+
+Setup uses `alm-config.psd1` as the source for shared-source settings, provider options,
+branches, and environment mappings. It does not infer missing settings from existing
+workflow or pipeline files. An existing repository without configured branches starts
+with its default branch and empty environment mappings; configure those values in the
+guided editor and commit the config before applying it.
+
+Run `setup-github.ps1 -ApplyConfig` or `setup-azdo.ps1 -ApplyConfig` to regenerate and
+publish caller files from the config committed on the repository's default branch. This
+mode requires `provider`, non-empty `repository` and `ref` strings, and a non-empty
+`branches` map. It skips settings editors and provider-resource provisioning; it still
+previews the config and generated files and asks how to publish each branch. Its
+external-resource plan is empty by design: this mode only applies repository files.
+Branches, deployment environments, solutions, BUILD validation and OIDC settings can be
+changed only by editing and committing `alm-config.psd1`, then running `-ApplyConfig`
+again; this mode offers no editor for them.
+Normal guided setup also previews the serialized config and generated workflow/pipeline
+files and lists deferred provider, Entra ID, and Dataverse operations before
+**Apply changes**. That list is a plan based on the selected setup, not a live
+before/after resource diff; prerequisites already created to let setup proceed are
+excluded, and secret values are never displayed. Previewing writes only to a temporary
+directory. If applying changes fails, setup returns to the menu with selections
+retained; branch publications that already succeeded are not rolled back.
+
+The legacy top-level `buildValidation.baselineRelease` remains a fallback for
+older configurations. New setup writes the baseline under each branch's
+`buildValidation` entry. `solutionCheck.enabled` remains the global switch for
+running Solution Checker; setup enables it when BUILD validation is enabled for at
+least one branch.
 
 ### Organization Settings
 
@@ -264,8 +351,8 @@ application user used to authenticate.
 
 ### Node.js for Code Apps
 
-`nodeVersion` accepts a major version such as `'22'` or an exact release such as
-`'22.14.0'`. For a major version, the installer reuses an already available compatible
+`nodeVersion` accepts a major version such as `'26'` or an exact release such as
+`'26.0.0'`. For a major version, the installer reuses an already available compatible
 Node.js version or downloads the latest stable patch from nodejs.org. Exact versions
 are pinned. Downloads are checksum-verified and cached under the runner user's
 `.alm4dataverse/tools/node` directory. This setup runs only when the dependency installer
@@ -580,19 +667,35 @@ The build writes the exact loaded module versions and installed PAC version to `
 
 ### PAC CLI Version
 
-The pipeline scripts require Power Apps CLI (`pac`) for solution operations (for example export/unpack). `installdependencies.ps1` installs PAC automatically using the configured version.
+The pipeline scripts require Power Apps CLI (`pac`) for solution operations (for example export/unpack). The installer uses the .NET tool package `Microsoft.PowerApps.CLI.Tool` (rather than an npm package) and installs it automatically using the configured version.
 
 ```powershell
-pacCliVersion = '2.13.1'
+pacCliVersion = '2.16.1'
 ```
 
 **Version Specifications:**
 
 - Empty string (`''`): Installs the latest stable version
 - `'prerelease'`: Installs the latest prerelease version
-- Specific version (for example `'2.13.1'`): Installs that exact version
+- Specific version (for example `'2.16.1'`): Installs that exact version
 
 For reproducible builds/deployments, pin an explicit version.
+
+The selector is chosen in this order:
+
+1. Start with `pacCliVersion` from the application configuration merged with
+   [the shared defaults](../../alm-config-defaults.psd1). The default is
+   `'2.16.1'`.
+2. During BUILD, `installdependencies.ps1` installs or updates
+   `Microsoft.PowerApps.CLI.Tool` using that selector. An empty value means the
+   latest stable release, `'prerelease'` means the latest prerelease, and an
+   explicit version means that exact NuGet version.
+3. BUILD reads the installed tool version and writes the exact value to
+   `scriptDependencies.lock.json` in the artifact.
+4. Later dependency-installation and cache-resolution steps use
+   `scriptDependencies.lock.json` when it is present, so its `pacCliVersion`
+   overrides the merged configuration and prevents floating selectors from
+   being resolved again.
 
 > [!NOTE]
 > **Advanced: PAC on Azure DevOps.**
@@ -641,13 +744,20 @@ For GitHub, set `timeout-minutes` beside `runs-on` on the job, **not** under the
 
 ### BUILD validation baseline
 
-`buildValidation.baselineRelease` optionally configures a release that BUILD
-deploys to the Dataverse validation environment before deploying the candidate
-artifacts. Leave it empty to deploy only the candidate.
+`branches.<branch>.buildValidation.baselineRelease` optionally configures a release
+that BUILD deploys to the Dataverse validation environment before deploying the
+candidate artifacts. Leave it empty to deploy only the candidate. The top-level
+`buildValidation.baselineRelease` is a legacy fallback used only for branches whose
+entry has no `baselineRelease` key.
 
 ```powershell
-buildValidation = @{
-    baselineRelease = '@TEST'
+branches = @{
+    main = @{
+        buildValidation = @{
+            environmentName = 'Build-main'
+            baselineRelease = '@TEST'
+        }
+    }
 }
 ```
 

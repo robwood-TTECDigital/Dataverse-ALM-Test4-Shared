@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
     if (-not ('AlmDependencyImportCapture' -as [type])) {
@@ -54,7 +54,6 @@ Describe 'Dependency installation' {
         Mock Install-Module {
             $version = switch ($Name) {
                 'Az.Accounts' { '5.5.0' }
-                'Az.ManagementPartner' { '0.8.0' }
                 'Az.Resources' { '2.0.0' }
                 default { '3.4.1-preview.1' }
             }
@@ -64,7 +63,6 @@ Describe 'Dependency installation' {
         Mock Import-Module {} -ParameterFilter { $Name -like '*mock-module*' }
         Mock Get-Module { [pscustomobject]@{ Version = [version]'5.5.0'; Prerelease = '' } } -ParameterFilter { $Name -eq 'Az.Accounts' }
         Mock Get-Module { [pscustomobject]@{ Version = [version]'2.0.0'; Prerelease = '' } } -ParameterFilter { $Name -eq 'Az.Resources' }
-        Mock Get-Module { [pscustomobject]@{ Version = [version]'0.8.0'; Prerelease = '' } } -ParameterFilter { $Name -eq 'Az.ManagementPartner' }
 
         Mock Get-Module {
             $version = switch ($Name) {
@@ -90,7 +88,7 @@ Describe 'Dependency installation' {
             }
             [System.IO.File]::Exists($fullPath) -or [System.IO.Directory]::Exists($fullPath)
         }
-        Mock dotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.13.1 pac' }
+        Mock dotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.16.1 pac' }
         Push-Location $script:dependencyDirectory
     }
 
@@ -158,17 +156,16 @@ Describe 'Dependency installation' {
         Mock Install-Module { [pscustomobject]@{ Name = $Name; Version = '3.4.1-preview.1' } } -ParameterFilter { $Name -eq 'Rnwood.Dataverse.Data.PowerShell' }
         Mock Get-InstalledModule {
             [pscustomobject]@{ InstalledLocation = (Join-Path $TestDrive $Name) }
-        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.ManagementPartner', 'Az.Resources', 'Rnwood.Dataverse.Data.PowerShell') }
+        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.Resources', 'Rnwood.Dataverse.Data.PowerShell') }
         Mock Import-Module { [AlmDependencyImportCapture]::ImportOrder.Add([string]$Name) } -ParameterFilter { $Name -like '*.psd1' }
         Set-Content -LiteralPath 'alm-config.psd1' -Value "@{ scriptDependencies = @{ 'Rnwood.Dataverse.Data.PowerShell' = '3.4.1-preview.1'; 'Az.Resources' = '2.0.0' } }"
 
         { & (Join-Path $repoRoot 'pipelines/scripts/installdependencies.ps1') } | Should -Not -Throw
 
-        [AlmDependencyImportCapture]::ImportOrder | Should -HaveCount 4
+        [AlmDependencyImportCapture]::ImportOrder | Should -HaveCount 3
         [AlmDependencyImportCapture]::ImportOrder[0] | Should -Match 'Az.Accounts'
-        ([AlmDependencyImportCapture]::ImportOrder[1..2] -join ';') | Should -Match 'Az.Resources'
-        ([AlmDependencyImportCapture]::ImportOrder[1..2] -join ';') | Should -Match 'Az.ManagementPartner'
-        [AlmDependencyImportCapture]::ImportOrder[3] | Should -Match 'Rnwood.Dataverse.Data.PowerShell'
+        [AlmDependencyImportCapture]::ImportOrder[1] | Should -Match 'Az.Resources'
+        [AlmDependencyImportCapture]::ImportOrder[2] | Should -Match 'Rnwood.Dataverse.Data.PowerShell'
     }
 
     It 'uses pinned lock-file module and CLI selectors' {

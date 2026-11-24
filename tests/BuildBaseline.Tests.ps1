@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $script:baselineScript = Join-Path $repoRoot 'pipelines/scripts/resolvebuildvalidationbaseline.ps1'
     function git {
@@ -45,6 +45,18 @@ Describe 'Azure DevOps BUILD baseline selection' {
         Invoke-BaselineFixture -Selector ''
         Should -Invoke Invoke-RestMethod -Times 0 -Exactly
         Should -Invoke git -Times 0 -Exactly
+    }
+
+    It 'uses the selected branch baseline instead of the legacy global baseline' {
+        $configPath = Join-Path $TestDrive 'alm-config.psd1'
+        Set-Content -LiteralPath $configPath -Value "@{ buildValidation = @{ baselineRelease = '456' }; branches = @{ main = @{ buildValidation = @{ baselineRelease = '123' } } } }"
+
+        & $script:baselineScript -ConfigPath $configPath -SourceDirectory $TestDrive `
+            -CollectionUri 'https://dev.azure.com/example' -Project 'Test Project' -DefinitionId 7 `
+            -AccessToken test-token -BranchName 'refs/heads/main'
+
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -match '/builds/123\?api-version=7.1' }
+        Should -Invoke Invoke-RestMethod -Times 0 -Exactly -ParameterFilter { $Uri -match '/builds/456\?api-version=7.1' }
     }
 
     It 'validates a fixed BUILD run ID' {

@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $script:buildScript = Join-Path $repoRoot 'pipelines/scripts/build.ps1'
     . (Join-Path $repoRoot 'pipelines/scripts/common.ps1')
@@ -104,13 +104,6 @@ Describe 'Build artifacts and solution-check helpers' {
                 PrivateData = @{ PSData = @{} }
             }
         } -ParameterFilter { $Name -eq 'Az.Accounts' }
-        Mock Get-Module {
-            [pscustomobject]@{
-                Path        = ''
-                Version     = [version]'0.8.0'
-                PrivateData = @{ PSData = @{} }
-            }
-        } -ParameterFilter { $Name -eq 'Az.ManagementPartner' }
         Mock Get-Command {
             $env:ALM_BUILD_TEST_PACK_COMMAND_RESOLVED = 'true'
             [pscustomobject]@{
@@ -123,7 +116,7 @@ Describe 'Build artifacts and solution-check helpers' {
             $candidatePath = if ($null -ne $LiteralPath) { [string]$LiteralPath } else { [string]$Path }
             $candidatePath -match '[\\/]\.alm4dataverse[\\/]tools$'
         }
-        Mock Invoke-TestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.13.1+build pac' }
+        Mock Invoke-TestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.16.1+build pac' }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-TestPac' } } -ParameterFilter { $Name -eq 'pac' }
         Mock Invoke-TestPac { $global:LASTEXITCODE = 0; 'Critical: 0'; 'High: 1'; 'Low: 2' }
         # Most cases keep work in Pester's runspace so mocks remain visible. Both overlap cases
@@ -160,8 +153,7 @@ Describe 'Build artifacts and solution-check helpers' {
         $lock = Get-Content (Join-Path $script:artifactDirectory 'scriptDependencies.lock.json') -Raw | ConvertFrom-Json -AsHashtable
         $lock.scriptDependencies['Rnwood.Dataverse.Data.PowerShell'] | Should -Be '3.0.4-preview.1'
         $lock.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'
-        $lock.scriptDependencies['Az.ManagementPartner'] | Should -Be '0.8.0'
-        $lock.pacCliVersion | Should -Be '2.13.1'
+        $lock.pacCliVersion | Should -Be '2.16.1'
     }
 
     It 'rejects a missing extra asset' {

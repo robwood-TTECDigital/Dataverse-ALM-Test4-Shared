@@ -1,32 +1,6 @@
-@{
+﻿@{
     # Consumer configuration overrides scalars, recursively merges hashtables and
     # appends arrays. Keep shared defaults here rather than in copied repositories.
-    hooks = @{
-        preExport  = @()
-        preExportSolution = @()
-        postExport = @(
-            "[alm]/ttec-digital/postexport.ps1"
-        )
-        parallelExportSolution = @(
-            "[alm]/ttec-digital/parallel-export-solution.ps1"
-        )
-        postExportSolution = @()
-        preDeploy  = @(
-            "[alm]/ttec-digital/predeploy-management-partner.ps1"
-            "[alm]/ttec-digital/predeploy.ps1"
-        )
-        postDeploy = @(
-            "[alm]/ttec-digital/postdeploy.ps1"
-        )
-        preBuild   = @()
-        postBuild  = @(
-            "[alm]/ttec-digital/postbuild.ps1"
-        )
-        dataMigrations = @(
-            "[alm]/ttec-digital/solution-upgrade-migrations.ps1"
-        )
-    }
-
     scriptDependencies = @{
         # 3.4.0 fixes connection handling in the export comparison cmdlets.
         "Rnwood.Dataverse.Data.PowerShell" = "3.4.0"
@@ -35,16 +9,32 @@
         "Az.ManagementPartner" = "0.8.0"
     }
 
+    hooks = @{
+        preExport = @()
+        preExportSolution = @()
+        postExport = @("[alm]/ttec-digital/postexport.ps1")
+        parallelExportSolution = @("[alm]/ttec-digital/parallel-export-solution.ps1")
+        postExportSolution = @()
+        preDeploy = @(
+            "[alm]/ttec-digital/predeploy-management-partner.ps1"
+            "[alm]/ttec-digital/predeploy.ps1"
+        )
+        postDeploy = @("[alm]/ttec-digital/postdeploy.ps1")
+        preBuild = @()
+        postBuild = @("[alm]/ttec-digital/postbuild.ps1")
+        dataMigrations = @("[alm]/ttec-digital/solution-upgrade-migrations.ps1")
+    }
+
     # Azure MPN partner linked to the identity used for deployment. Set to '' to disable.
     partnerId = 6479631
 
     # Power Apps CLI version used by pipeline scripts.
     # Supports: '' (latest stable), 'prerelease', or an exact version.
-    pacCliVersion = '2.13.1'
+    pacCliVersion = '2.16.1'
 
     # Node.js version required for BUILD/IMPORT when a solution configures codeApps.
     # Set a major version to use an installed compatible release or download the latest stable patch.
-    nodeVersion = '22'
+    nodeVersion = '26'
 
     # Timeout in seconds for each solution import operation.
     # Increase this value if solution imports time out in large or complex environments.
@@ -106,34 +96,4 @@
         # Maximum number of solutions to check in parallel.
         maxParallel = 4
     }
-
-    # BEGIN TTEC Digital-specific configuration
-    # Empty values keep optional hook behavior inactive unless configured by a repository.
-    # LEGACY: DataSets, DefaultEnvVarValues, OrgSettings, and Portals remain for compatibility.
-    DataSets = @()
-    DefaultEnvVarValues = @{}
-    DependencySolutions = @()
-    ExternalDependencySolutionNames = @()
-    IgnoreSolutions = @()
-    OrgSettings = @{}
-    PostDependencySolutions = @()
-    AadGroupTeams = @()
-    AccessTeams = @()
-    ApplicationUsers = @()
-    BuDefaultTeams = @()
-    CanvasAppSharing = @()
-    FlowSharing = @()
-    OwnerTeams = @()
-    PluginSteps = @()
-    Portals = @{}
-    SynapseFolders = @()
-    SynapseRepositoryUrl = ''
-    SynapseLinkedServicesInclude = @()
-    SynapseLinkedServicesExclude = @()
-    SynapseManagedPrivateEndpoints = @()
-    validation = @{
-        parallel = $true
-        maxParallel = 4
-    }
-    # END TTEC Digital-specific configuration
 }

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 #Requires -Modules powershell-yaml
 
 <#
@@ -6,8 +6,7 @@
     Validates local Markdown links, fenced examples and configuration references.
 .PARAMETER Paths
     Explicit Markdown files; otherwise checks the root README, AGENTS, CONTRIBUTING
-    and SECURITY files, docs, TTEC documentation, the scaffolded AGENTS file and
-    the scripts README.
+    and SECURITY files, docs, the scaffolded AGENTS file and the scripts README.
 .PARAMETER SkipCoverage
     Skips configuration/action/template reference checks, not links or examples.
 .DESCRIPTION
@@ -25,7 +24,6 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 if ($Paths.Count -eq 0) {
     $Paths = @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md' | ForEach-Object { Join-Path $repoRoot $_ }) +
         @(Get-ChildItem (Join-Path $repoRoot 'docs') -Filter '*.md' -Recurse | Select-Object -ExpandProperty FullName) +
-        @(Get-ChildItem (Join-Path $repoRoot 'ttec-digital/docs') -Filter '*.md' -Recurse | Select-Object -ExpandProperty FullName) +
         @((Join-Path $repoRoot 'copy-to-your-repo/AGENTS.md'), (Join-Path $PSScriptRoot 'README.md'))
 }
 
@@ -111,10 +109,7 @@ foreach ($path in $Paths) {
 if (-not $SkipCoverage) {
     # These are reference-presence checks, not proof that the prose is semantically
     # complete. Contract accuracy still requires review against the consumers.
-    $configReference = @(
-        Get-Content (Join-Path $repoRoot 'docs/config/alm-config.md') -Raw
-        Get-Content (Join-Path $repoRoot 'ttec-digital/docs/alm-config.md') -Raw
-    ) -join [Environment]::NewLine
+    $configReference = Get-Content (Join-Path $repoRoot 'docs/config/alm-config.md') -Raw
     $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
     $template = Import-PowerShellDataFile (Join-Path $repoRoot 'copy-to-your-repo/alm-config.psd1')
     foreach ($key in @($defaults.Keys) + @($template.Keys) + @($defaults.solutionCheck.Keys) + @($template.hooks.Keys)) {
