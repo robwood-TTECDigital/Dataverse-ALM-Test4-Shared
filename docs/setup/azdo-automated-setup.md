@@ -66,7 +66,7 @@ You will need to be 'Project Collection Administrator' if you want the automated
 Download and review the released script before executing it:
 
 ```powershell
-Invoke-WebRequest 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-azdo.ps1' -OutFile './setup-azdo.ps1'
+Invoke-WebRequest 'https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-azdo.ps1' -OutFile './setup-azdo.ps1'
 ```
 
 After review, run `.\setup-azdo.ps1`. To select a tenant or shared code ref, use the
@@ -84,7 +84,7 @@ The one-line bootstrap is also available after you have reviewed and trust the r
 2) Paste this in and press Enter.
 
    ```powershell
-   iwr https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-azdo.ps1 | iex
+   iwr https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-azdo.ps1 | iex
    ```
 
    Use the download-and-review approach above before trusting this bootstrap.

@@ -38,7 +38,7 @@ jobs:
       actions: write
     steps:
       - name: Export
-        uses: ttecdigital-msba-emea/Dataverse-ALM/.github/actions/export@main
+        uses: ALM4Dataverse/ALM4Dataverse/.github/actions/export@main
         with:
           commit-message: ${{ inputs.commit-message }}
           environment-name: ${{ format('Dev-{0}', github.ref_name) }}
