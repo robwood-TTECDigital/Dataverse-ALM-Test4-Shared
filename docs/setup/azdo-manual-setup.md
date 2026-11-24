@@ -51,7 +51,7 @@ Replace `YOUR_CLONE_URL` with the new repository's clone URL:
 ```bash
 git clone YOUR_CLONE_URL
 cd ALM4Dataverse
-git remote add upstream https://github.com/ALM4Dataverse/ALM4Dataverse.git
+git remote add upstream https://github.com/ttecdigital-msba-emea/Dataverse-ALM.git
 git fetch upstream refs/tags/stable:refs/tags/stable
 git switch -c main stable
 git push origin main

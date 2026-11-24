@@ -3,7 +3,7 @@
 Use this page when you move an application to a newer shared ref. It lists changes that
 need action on your side. Each entry gives what you'll see if the action is missed and
 what to do. Routine fixes and new optional features are in the
-[release notes](https://github.com/ALM4Dataverse/ALM4Dataverse/releases); the
+[release notes](https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases); the
 [update procedure](updating.md#update-an-application) explains how to roll an upgrade
 out safely.
 
