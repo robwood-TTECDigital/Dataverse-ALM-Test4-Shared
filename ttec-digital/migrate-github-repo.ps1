@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
     Migrates a legacy GitHub Dataverse ALM repository to the current ALM4Dataverse GitHub setup.
@@ -33,6 +33,8 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$TemplateDirectory
 )
+
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '', Justification = 'Migration script is distributed as UTF-8 with BOM by release packaging.')]
 
 $ErrorActionPreference = 'Stop'
 

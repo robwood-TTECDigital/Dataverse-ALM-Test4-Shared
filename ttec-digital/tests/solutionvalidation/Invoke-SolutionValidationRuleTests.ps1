@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Pester tests for solution validation rules
 .DESCRIPTION
@@ -78,7 +78,11 @@ $testSolutions = @{
 
 #region Helper Functions
 
-function Cleanup-TestArtifacts {
+function Remove-TestArtifact {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This test cleanup helper intentionally removes all test artifacts without prompting.')]
+    [CmdletBinding()]
+    param()
+
     <#
     .SYNOPSIS
         Removes all test artifacts created by this script
@@ -157,7 +161,7 @@ function Cleanup-TestArtifacts {
     Write-Host "Cleanup complete`n" -ForegroundColor Green
 }
 
-function Setup-TestPublishers {
+function Initialize-TestPublisher {
     <#
     .SYNOPSIS
         Creates test publishers for validation testing
@@ -198,7 +202,7 @@ function Setup-TestPublishers {
     }
 }
 
-function Setup-TestSolutions {
+function Initialize-TestSolution {
     <#
     .SYNOPSIS
         Creates test solutions for validation testing
@@ -234,7 +238,7 @@ function Setup-TestSolutions {
     }
 }
 
-function Setup-TestTables {
+function Initialize-TestTable {
     <#
     .SYNOPSIS
         Creates test tables for validation testing
@@ -310,7 +314,7 @@ function Setup-TestTables {
     }
 }
 
-function Setup-TestEnvironmentVariables {
+function Initialize-TestEnvironmentVariable {
     <#
     .SYNOPSIS
         Creates test environment variables
@@ -349,7 +353,7 @@ function Setup-TestEnvironmentVariables {
     }
 }
 
-function Setup-TestComponents {
+function Initialize-TestComponent {
     <#
     .SYNOPSIS
         Adds components to test solutions to create violation scenarios
@@ -464,7 +468,7 @@ catch {
 # Execute based on parameters
 if ($Cleanup) {
     # Cleanup mode - remove all test artifacts
-    Cleanup-TestArtifacts
+    Remove-TestArtifact
     return
 }
 
@@ -668,11 +672,11 @@ if ($TestOnly) {
 try {
     Write-Host "`nSetting up test data..." -ForegroundColor Cyan
 
-    Setup-TestPublishers
-    Setup-TestSolutions
-    Setup-TestTables
-    Setup-TestEnvironmentVariables
-    Setup-TestComponents
+    Initialize-TestPublisher
+    Initialize-TestSolution
+    Initialize-TestTable
+    Initialize-TestEnvironmentVariable
+    Initialize-TestComponent
 
     Write-Host "`nSetup complete!" -ForegroundColor Green
 

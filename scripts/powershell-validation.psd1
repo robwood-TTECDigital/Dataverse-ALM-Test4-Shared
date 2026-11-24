@@ -92,6 +92,104 @@
             Reason = 'The headless apply caller supplies a plaintext bearer token at runtime; conversion adapts it to the downstream SecureString contract, not a hardcoded secret.'
         }
         @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$ModulePath'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$ValidationPath'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Client'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$SourceContext'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Rule'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Budget'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Cancellation'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$Events'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/common/validation-workers.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Invoke-AlmValidationRules'
+            Source = '$LogDirectory'
+            Reason = 'The worker explicitly binds this value through Start-ThreadJob ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $PersonalAccessToken -AsPlainText -Force'
+            Reason = 'The token is supplied at runtime and must be adapted to the VSTeam SecureString contract.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $adoAuthResult.AccessToken -AsPlainText -Force'
+            Reason = 'The token is supplied at runtime and must be adapted to the VSTeam SecureString contract.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
+            Function = '<script>'
+            Source = 'ConvertTo-SecureString -String $patPlainText -AsPlainText -Force'
+            Reason = 'The token is supplied at runtime and must be adapted to the VSTeam SecureString contract.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Get-AuthToken'
+            Source = '$ClientId'
+            Reason = 'Authentication job inputs are explicitly bound through Start-Job ArgumentList.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseUsingScopeModifierInNewRunspaces'
+            Function = 'Get-AuthToken'
+            Source = '$Authority'
+            Reason = 'Authentication job inputs are explicitly bound through Start-Job ArgumentList.'
+        }
+        @{
             Path = 'setup/azdo/organization-and-project-setup.ps1'
             Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
             Function = 'Initialize-AzDoOrganization'
