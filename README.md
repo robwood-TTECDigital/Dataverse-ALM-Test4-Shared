@@ -2,11 +2,6 @@
 
 ![ALM4Dataverse](logo.png)
 
-> [!IMPORTANT]
-> The permanent home for this project is now
-> [ttecdigital-msba-emea/Dataverse-ALM](https://github.com/ttecdigital-msba-emea/Dataverse-ALM).
-> Azure DevOps users should update their remotes and links to the GitHub repository.
-
 ## TTEC Digital fork of ALM4Dataverse
 
 This repository contains the TTEC Digital custom fork of the
@@ -17,6 +12,11 @@ The main content below describes the shared ALM functionality. This fork adds:
   scripts to assist with updating configuration.
 - TTEC Digital extensions for solution validation rules, Azure Synapse component
   management, and schema migration tracking.
+
+> [!IMPORTANT]
+> The permanent home for this TTEC Digital fork is now
+> [ttecdigital-msba-emea/Dataverse-ALM](https://github.com/ttecdigital-msba-emea/Dataverse-ALM).
+> Azure DevOps users should update their remotes and links to the GitHub repository.
 
 See the [TTEC Digital documentation](ttec-digital/docs/alm-config.md) for details.
 For v1 application repositories, use
