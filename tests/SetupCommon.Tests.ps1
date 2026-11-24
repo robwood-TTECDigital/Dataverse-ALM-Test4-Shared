@@ -529,7 +529,7 @@ Describe 'Setup configuration and validation helpers' {
         Test-IsValidTenantIdentifier ' ' | Should -BeFalse
         { Assert-ValidTenantIdentifier -TenantIdentifier invalid -Source TestTenant } | Should -Throw '*TestTenant*is invalid*'
         Assert-ValidTenantIdentifier -TenantIdentifier example.com
-        Get-Alm4DataverseDocUrl -RelativePath '/docs\config' -Ref main | Should -Be 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM/tree/main/docs/config'
+        Get-Alm4DataverseDocUrl -RelativePath '/docs\config' -Ref main | Should -Be 'https://github.com/ALM4Dataverse/ALM4Dataverse/tree/main/docs/config'
         Get-Alm4DataverseDocumentationRef | Should -Be stable
         Get-DefaultSetupBranchName -BaseBranch '///' -Context '///' | Should -Match '^alm4dataverse/setup-main-\d{14}$'
     }

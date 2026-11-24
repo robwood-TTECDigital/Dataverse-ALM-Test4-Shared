@@ -1890,7 +1890,7 @@ function Get-Alm4DataverseDocUrl {
 
     $effectiveRef = Get-Alm4DataverseDocumentationRef -Ref $Ref
     $normalizedPath = $RelativePath.TrimStart('/').Replace('\', '/')
-    return "https://github.com/ttecdigital-msba-emea/Dataverse-ALM/tree/$effectiveRef/$normalizedPath"
+    return "https://github.com/ALM4Dataverse/ALM4Dataverse/tree/$effectiveRef/$normalizedPath"
 }
 
 function Get-SetupGuidanceHeaderMarkup {

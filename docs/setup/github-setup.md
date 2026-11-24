@@ -29,7 +29,7 @@ GitHub repository unless you want to maintain a fork of the shared implementatio
 Download the released script, review it, then run it from PowerShell:
 
 ```powershell
-Invoke-WebRequest 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-github.ps1' -OutFile './setup-github.ps1'
+Invoke-WebRequest 'https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-github.ps1' -OutFile './setup-github.ps1'
 ```
 
 After reviewing the downloaded file:
@@ -42,7 +42,7 @@ The existing one-line bootstrap remains available for users who have already rev
 and trust the release:
 
 ```powershell
-iwr https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-github.ps1 | iex
+iwr https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-github.ps1 | iex
 ```
 
 Setup signs in, selects or creates the application repository, selects solutions in

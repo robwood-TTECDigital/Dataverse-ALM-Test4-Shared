@@ -178,7 +178,7 @@ if ($rnwoodDataverseVersion -like '__*') {
         $config = Import-PowerShellDataFile -Path $configPath
         $rnwoodDataverseVersion = $config.scriptDependencies.'Rnwood.Dataverse.Data.PowerShell'
     } else {
-        throw "This script appears to be running in development mode but alm-config-defaults.psd1 was not found at $configPath. Please download the released version from https://github.com/ttecdigital-msba-emea/Dataverse-ALM/releases/latest/download/setup-azdo.ps1"
+        throw "This script appears to be running in development mode but alm-config-defaults.psd1 was not found at $configPath. Please download the released version from https://github.com/ALM4Dataverse/ALM4Dataverse/releases/latest/download/setup-azdo.ps1"
     }
 }
 
@@ -192,7 +192,7 @@ if ($upstreamRepo -like '__*') {
         $upstreamRepo = $PSScriptRoot
     } else {
         Write-Host "Development mode: Using default GitHub URL as upstream repo" -ForegroundColor Yellow
-        $upstreamRepo = 'https://github.com/ttecdigital-msba-emea/Dataverse-ALM.git'
+        $upstreamRepo = 'https://github.com/ALM4Dataverse/ALM4Dataverse.git'
     }
 }
 
