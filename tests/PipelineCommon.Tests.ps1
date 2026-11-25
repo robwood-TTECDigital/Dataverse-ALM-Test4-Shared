@@ -24,6 +24,13 @@ Describe 'ALM configuration loading' {
         $config.buildVersion.branches | Should -BeOfType [hashtable]
     }
 
+    It 'preserves inherited hooks when the application hook map is empty' {
+        Set-Content -LiteralPath (Join-Path $TestDrive 'alm-config.psd1') -Value '@{ hooks = @{} }'
+        $config = Get-AlmConfig -BaseDirectory $TestDrive
+        $config.hooks.postDeploy | Should -Contain '[alm]/ttec-digital/postdeploy.ps1'
+        $config.hooks.dataMigrations | Should -Contain '[alm]/ttec-digital/solution-upgrade-migrations.ps1'
+    }
+
     It 'pins Az.Accounts to a Dataverse-compatible version' {
         $defaults = Import-PowerShellDataFile (Join-Path $repoRoot 'alm-config-defaults.psd1')
         $defaults.scriptDependencies['Az.Accounts'] | Should -Be '5.5.0'

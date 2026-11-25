@@ -288,12 +288,7 @@ function Get-AlmConfig {
     # Merge configs: mainConfig overrides defaultConfig, arrays are concatenated
     foreach ($key in $mainConfig.Keys) {
         if ($defaultConfig.ContainsKey($key)) {
-            if ($key -eq 'hooks' -and $mainConfig[$key] -is [hashtable] -and $mainConfig[$key].Count -eq 0) {
-                $config[$key] = @{}
-            }
-            else {
-                $config[$key] = Merge-AlmConfigValue -DefaultValue $defaultConfig[$key] -OverrideValue $mainConfig[$key]
-            }
+            $config[$key] = Merge-AlmConfigValue -DefaultValue $defaultConfig[$key] -OverrideValue $mainConfig[$key]
         }
         else {
             $config[$key] = $mainConfig[$key]

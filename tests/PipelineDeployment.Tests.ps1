@@ -63,7 +63,7 @@
     solutions = @(@{ name = 'Example'; $Settings })
     partnerId = ''
     build = @{ parallel = `$false; versionCollisionGuard = $versionCollisionGuardLiteral }
-    hooks = @{}
+    hooks = @()
 }
 "@
     }

@@ -66,7 +66,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; solutionCheck = @{} })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         $env:GITHUB_STEP_SUMMARY = Join-Path $fixtureRoot 'job-summary.md'
@@ -191,7 +191,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'pac' })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
@@ -228,7 +228,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'pac' })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
@@ -261,7 +261,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'solution' })
     build = @{ parallel = $false }
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
@@ -347,7 +347,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('apps/Portal'); codeAppPublishMethod = 'solution' })
     build = @{ parallel = $false }
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-CodeAppTestNpm' } } -ParameterFilter { $Name -eq 'npm' }
@@ -377,7 +377,7 @@ Describe 'Build artifacts and solution-check helpers' {
 @{
     solutions = @(@{ name = 'Example'; codeApps = @('../outside') })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
 
@@ -396,7 +396,7 @@ Describe 'Build artifacts and solution-check helpers' {
     solutions = @(@{ name = 'Example' })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         $env:ALM_BUILD_TEST_REQUIRE_PACK_COMMAND = 'true'
@@ -449,7 +449,7 @@ Describe 'Build artifacts and solution-check helpers' {
     solutions = @(@{ name = 'Example' })
     build = @{ parallel = $false; versionCollisionGuard = $false }
     assets = @()
-    hooks = @{}
+    hooks = @()
 }
 '@
 
@@ -479,7 +479,7 @@ Describe 'Build artifacts and solution-check helpers' {
         )
     })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
@@ -502,7 +502,7 @@ Describe 'Build artifacts and solution-check helpers' {
         )
     })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
@@ -538,7 +538,7 @@ Set-Content -LiteralPath $OutputPath -Value built
     })
     build = @{ parallel = `$false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 "@
 
@@ -563,7 +563,7 @@ Set-Content -LiteralPath $OutputPath -Value built
         )
     })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -586,7 +586,7 @@ Set-Content -LiteralPath $OutputPath -Value built
         )
     })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -645,7 +645,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     })
     build = @{ versionCollisionGuard = `$false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 "@
         $previousRealParallelSetting = $env:ALM_BUILD_TEST_REAL_PARALLEL
@@ -674,7 +674,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command {
@@ -706,7 +706,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         Mock Get-Command {
@@ -737,7 +737,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     solutions = @(@{ name = 'Example'; mappingFile = 'solutions/Example/Missing.xml' })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -751,7 +751,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     solutions = @(@{ name = 'Example'; buildCommands = @() })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -770,7 +770,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -789,7 +789,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     })
     build = @{ parallel = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -803,7 +803,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     solutions = @(@{ name = 'Example' })
     build = @{ parallel = $false; maxParallel = 4 }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
@@ -816,7 +816,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
 @{
     solutions = @(@{ name = 'Example' }, @{ name = 'example' })
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } |
@@ -891,7 +891,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     solutions = @(@{ name = 'First' }, @{ name = 'Second' })
     build = @{ versionCollisionGuard = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
 
@@ -957,7 +957,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     solutionCheck = @{ enabled = $true; maxParallel = 0; geo = 'UnitedStates'; ruleSet = 'rule-set'; excludedFiles = '*.js'; ruleLevelOverride = @{ Id = 'rule'; OverrideLevel = 'Low' }; failThreshold = 'Critical' }
     build = @{ versionCollisionGuard = $false }
     assets = @('data')
-    hooks = @{}
+    hooks = @()
 }
 '@
         & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory
@@ -971,14 +971,14 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     }
 
     It 'fails checker findings at or above the configured severity' {
-        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true; failThreshold = 'High'; ruleSet = 'none'; excludedFiles = @('*.js') }; hooks = @{} }"
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true; failThreshold = 'High'; ruleSet = 'none'; excludedFiles = @('*.js') }; hooks = @() }"
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } | Should -Throw '*Solution check*'
         $report = Get-Content (Join-Path $script:artifactDirectory 'solution-check/solution-check-summary.json') -Raw | ConvertFrom-Json
         $report.results[0].ThresholdBreached | Should -BeTrue
     }
 
     It 'fails and records checker errors instead of passing them as clean checks' {
-        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true }; hooks = @{} }"
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true }; hooks = @() }"
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'pac' }
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } | Should -Throw '*Solution check*'
         $report = Get-Content (Join-Path $script:artifactDirectory 'solution-check/solution-check-summary.json') -Raw | ConvertFrom-Json
@@ -987,7 +987,7 @@ Export-ModuleMember -Function Compress-DataverseSolutionFile
     }
 
     It 'rejects unsupported exclusion configuration before calling PAC' {
-        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true; excludedFiles = 42 }; hooks = @{} }"
+        Set-Content -LiteralPath (Join-Path $script:sourceDirectory 'alm-config.psd1') -Value "@{ solutions = @(@{ name = 'Example'; solutionCheck = @{} }); solutionCheck = @{ enabled = `$true; excludedFiles = 42 }; hooks = @() }"
         { & $script:buildScript -SourceDirectory $script:sourceDirectory -ArtifactStagingDirectory $script:artifactDirectory } | Should -Throw '*excludedFiles*must be a string or array*'
         Should -Invoke Invoke-TestPac -Times 0 -Exactly
     }
