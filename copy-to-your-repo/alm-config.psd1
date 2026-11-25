@@ -68,6 +68,13 @@
     #   Dataverse application-user permissions alone don't grant access to that API.
     # - solutionCheck: (optional) per-solution PAC checker settings merged with global solutionCheck
     #   settings below. Use enabled = $false to skip checker for a specific solution.
+    #
+    ### BEGIN TTEC Digital-specific solution settings
+    # - validationMode: (optional) 'error' (default), 'warning', or 'disabled' for solution validation rules.
+    # - skipValidationRules: (optional) array of maps with required ruleName and mode ('skip', 'warning', or 'error').
+    #   Optional componentType (integer), componentId (GUID), and componentSchemaName (string) target components.
+    #   See ttec-digital/docs/solution-validation.md#component-specific-configuration.
+    ### END TTEC Digital-specific solution settings
     solutions = @(
         # Example:
         # @{
@@ -110,6 +117,17 @@
         #     )
         #     failThreshold = 'High'
         #   }
+        #
+        ### BEGIN TTEC Digital-specific solution settings
+        #
+        #   validationMode = 'warning'
+        #   skipValidationRules = @(
+        #     @{ ruleName = 'SolutionUsesSystemPublisher'; mode = 'skip' }
+        #     @{ ruleName = 'ComponentInMoreThanOneUnmanagedSolution'; componentType = 1; componentId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'; mode = 'warning' }
+        #     @{ ruleName = 'ComponentSchemaNamePrefixDoesNotMatchPublisherPrefix'; componentType = 1; componentSchemaName = 'legacy_customtable'; mode = 'warning' }
+        #   )
+        #
+        ### END TTEC Digital-specific solution settings
         # }
     )
 
@@ -121,6 +139,10 @@
     # Values may be static or trusted scriptblocks emitting exactly one value.
     # Scriptblocks receive $Context = @{ HookType; BaseDirectory; Config; ArtifactsPath; UseUnmanagedSolutions }.
     organizationSettings = @{}
+
+    # Azure management partner linked to the Azure identity before solution imports.
+    # Set to an empty string to disable partner-link management.
+    partnerId = 6479631
 
     # Organization-table columns applied after the postDeploy hook.
     # Example: @{ IsCustomControlsInCanvasAppsEnabled = $false }
@@ -338,4 +360,65 @@
     #     )
     #     maxParallel = 4
     # }
+
+    ### BEGIN TTEC Digital-specific configuration
+    # Optional values consumed by the bundled TTEC hooks; empty values are inactive.
+
+    # LEGACY: Prefer data hooks and the standard data asset workflow for new projects;
+    # see docs/config/example-hooks/data-import-export.md.
+    # Array form exports/deploys each named data folder. Map form sets the deployment stage.
+    # DataSets = @('configuration', 'reference')
+    # DataSets = @{ configuration = @{ Stage = 'BeforeTeams' }; reference = @{} }
+    DataSets = @()
+
+    # LEGACY: Set environment-specific values with DATAVERSEENVVAR_<schema-name> variables instead.
+    # Schema name -> default value; DATAVERSEENVVAR_<schema-name> overrides it.
+    # DefaultEnvVarValues = @{ contoso_DefaultRegion = 'west' }
+    DefaultEnvVarValues = @{}
+
+    # Artifact-relative packages imported before/after data and team operations.
+    # DependencySolutions = @('solutions/ContosoShared_managed.zip')
+    DependencySolutions = @()
+
+    # PostDependencySolutions = @('solutions/ContosoReporting_managed.zip')
+    PostDependencySolutions = @()
+
+    # ExternalDependencySolutionNames = @('ContosoShared')
+    ExternalDependencySolutionNames = @()
+
+    # IgnoreSolutions = @('ContosoLegacy')
+    IgnoreSolutions = @()
+
+    # LEGACY: Use organizationSettings or orgDbOrgSettings for the shared settings capability.
+    # Organization-table logical attribute name -> value, applied by preDeploy.
+    # OrgSettings = @{ isexternalsearchindexenabled = $true }
+    OrgSettings = @{}
+
+    # Team entries identify the business unit, team and role names; an empty
+    # BusinessUnitName selects the root business unit. IDs must be GUIDs.
+    AadGroupTeams = @()
+    AccessTeams = @()
+    ApplicationUsers = @()
+    BuDefaultTeams = @()
+    CanvasAppSharing = @()
+    FlowSharing = @()
+    OwnerTeams = @()
+    PluginSteps = @()
+
+    # LEGACY: Use solution-aware Power Pages deployment instead of this separate portal map.
+    Portals = @{}
+
+    # Synapse folder names, repository and linked-service filters enable Synapse integration.
+    SynapseFolders = @()
+    SynapseRepositoryUrl = ''
+    SynapseLinkedServicesInclude = @()
+    SynapseLinkedServicesExclude = @()
+    SynapseManagedPrivateEndpoints = @()
+
+    # Validation rule settings are independent of PAC solutionCheck.
+    validation = @{
+        parallel = $true
+        maxParallel = 4
+    }
+    ### END TTEC Digital-specific configuration
 }
