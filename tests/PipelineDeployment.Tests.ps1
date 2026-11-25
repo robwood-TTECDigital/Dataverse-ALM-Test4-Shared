@@ -61,6 +61,7 @@
         Set-Content -LiteralPath (Join-Path $TestDrive 'alm-config.psd1') -Value @"
 @{
     solutions = @(@{ name = 'Example'; $Settings })
+    partnerId = ''
     build = @{ parallel = `$false; versionCollisionGuard = $versionCollisionGuardLiteral }
     hooks = @{}
 }
@@ -98,6 +99,7 @@ Describe 'Deployment options' {
         Set-Content -LiteralPath (Join-Path $TestDrive 'alm-config.psd1') -Value @'
 @{
     solutions = @(@{ name = 'Example' })
+    partnerId = ''
     organizationSettings = @{
         IsCustomControlsInCanvasAppsEnabled = $true
         ComputedStage = { param($Context) $Context.HookType }

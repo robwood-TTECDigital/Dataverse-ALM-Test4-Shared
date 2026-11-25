@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
     Migrates a legacy Dataverse-ALM repository to the new ALM4Dataverse format.

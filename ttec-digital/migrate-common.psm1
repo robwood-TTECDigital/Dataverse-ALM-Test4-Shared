@@ -15,10 +15,6 @@
 #==============================================================================
 
 function Build-SolutionsSection {
-    <#
-    .SYNOPSIS
-        Builds the solutions section for migrated configuration.
-    #>
     param([array]$Solutions)
 
     if (-not $Solutions -or $Solutions.Count -eq 0) {
@@ -49,10 +45,6 @@ function Build-SolutionsSection {
 }
 
 function Build-AssetsSection {
-    <#
-    .SYNOPSIS
-        Builds the assets section for migrated configuration.
-    #>
     param([array]$Assets)
 
     if (-not $Assets -or $Assets.Count -eq 0) {
@@ -71,10 +63,6 @@ function Build-AssetsSection {
 }
 
 function Build-HooksSection {
-    <#
-    .SYNOPSIS
-        Builds the hooks section for migrated configuration.
-    #>
     param([hashtable]$Hooks)
 
     $sb = New-Object System.Text.StringBuilder
@@ -122,10 +110,6 @@ function Build-HooksSection {
 }
 
 function Build-ScriptDependenciesSection {
-    <#
-    .SYNOPSIS
-        Builds the script dependencies section for migrated configuration.
-    #>
     param([hashtable]$ScriptDependencies)
 
     if (-not $ScriptDependencies -or $ScriptDependencies.Count -eq 0) {
@@ -144,10 +128,6 @@ function Build-ScriptDependenciesSection {
 }
 
 function Build-LegacySection {
-    <#
-    .SYNOPSIS
-        Builds the legacy configuration section for migrated configuration.
-    #>
     param(
         [hashtable]$Config,
         [string[]]$LegacyKeys,
@@ -197,10 +177,6 @@ function Build-LegacySection {
 }
 
 function ConvertTo-PowerShellLiteral {
-    <#
-    .SYNOPSIS
-        Converts a value to a PowerShell literal.
-    #>
     param(
         [Parameter(Mandatory = $false)]
         $Value,
