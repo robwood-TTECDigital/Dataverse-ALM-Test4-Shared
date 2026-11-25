@@ -96,4 +96,34 @@
         # Maximum number of solutions to check in parallel.
         maxParallel = 4
     }
+
+    # BEGIN TTEC Digital-specific configuration
+    # Empty values keep optional hook behavior inactive unless configured by a repository.
+    # LEGACY: DataSets, DefaultEnvVarValues, OrgSettings, and Portals remain for compatibility.
+    DataSets = @()
+    DefaultEnvVarValues = @{}
+    DependencySolutions = @()
+    ExternalDependencySolutionNames = @()
+    IgnoreSolutions = @()
+    OrgSettings = @{}
+    PostDependencySolutions = @()
+    AadGroupTeams = @()
+    AccessTeams = @()
+    ApplicationUsers = @()
+    BuDefaultTeams = @()
+    CanvasAppSharing = @()
+    FlowSharing = @()
+    OwnerTeams = @()
+    PluginSteps = @()
+    Portals = @{}
+    SynapseFolders = @()
+    SynapseRepositoryUrl = ''
+    SynapseLinkedServicesInclude = @()
+    SynapseLinkedServicesExclude = @()
+    SynapseManagedPrivateEndpoints = @()
+    validation = @{
+        parallel = $true
+        maxParallel = 4
+    }
+    # END TTEC Digital-specific configuration
 }

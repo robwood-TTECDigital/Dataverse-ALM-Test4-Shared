@@ -190,6 +190,153 @@
             Reason = 'Authentication job inputs are explicitly bound through Start-Job ArgumentList.'
         }
         @{
+            Path = 'ttec-digital/migrate-azdo-repo.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'Legacy migration tooling is retained as a fork asset and is not rewritten solely for encoding normalization.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-github-repo.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'Legacy migration tooling is retained as a fork asset and is not rewritten solely for encoding normalization.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-SolutionsSection'
+            Source = 'Build-SolutionsSection'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-AssetsSection'
+            Source = 'Build-AssetsSection'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-HooksSection'
+            Source = 'Build-HooksSection'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-ScriptDependenciesSection'
+            Source = 'Build-ScriptDependenciesSection'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'Build-LegacySection'
+            Source = 'Build-LegacySection'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/migrate-common.psm1'
+            Rule = 'PSProvideCommentHelp'
+            Function = 'ConvertTo-PowerShellLiteral'
+            Source = 'ConvertTo-PowerShellLiteral'
+            Reason = 'Legacy migration helper exports retain their established public functions; documenting them is outside this update.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseBOMForUnicodeEncodedFile'
+            Function = '<script>'
+            Source = ''
+            Reason = 'The legacy Dataverse integration test script is retained as a fork asset and is not rewritten solely for encoding normalization.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Cleanup-TestArtifacts'
+            Source = 'Cleanup-TestArtifacts'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestPublishers'
+            Source = 'Setup-TestPublishers'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestSolutions'
+            Source = 'Setup-TestSolutions'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestTables'
+            Source = 'Setup-TestTables'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestEnvironmentVariables'
+            Source = 'Setup-TestEnvironmentVariables'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseApprovedVerbs'
+            Function = 'Setup-TestComponents'
+            Source = 'Setup-TestComponents'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Cleanup-TestArtifacts'
+            Source = 'Cleanup-TestArtifacts'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestPublishers'
+            Source = 'Setup-TestPublishers'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestSolutions'
+            Source = 'Setup-TestSolutions'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestTables'
+            Source = 'Setup-TestTables'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestEnvironmentVariables'
+            Source = 'Setup-TestEnvironmentVariables'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
+            Path = 'ttec-digital/tests/solutionvalidation/Invoke-SolutionValidationRuleTests.ps1'
+            Rule = 'PSUseSingularNouns'
+            Function = 'Setup-TestComponents'
+            Source = 'Setup-TestComponents'
+            Reason = 'Legacy integration-test helper names are retained for compatibility with existing invocation documentation.'
+        }
+        @{
             Path = 'setup/azdo/organization-and-project-setup.ps1'
             Rule = 'PSAvoidUsingConvertToSecureStringWithPlainText'
             Function = 'Initialize-AzDoOrganization'

@@ -369,7 +369,7 @@ Describe 'Deployment options' {
                 return [pscustomobject]@{ Version = [version]'5.5.0'; PrivateData = @{ PSData = @{} } }
             }
             [pscustomobject]@{ Version = [version]'3.0.4'; PrivateData = @{ PSData = @{ Prerelease = 'preview.1' } } }
-        } -ParameterFilter { $Name -in @('Az.Accounts', 'Rnwood.Dataverse.Data.PowerShell') }
+        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.ManagementPartner', 'Rnwood.Dataverse.Data.PowerShell') }
         Mock Get-Command { [pscustomobject]@{ Source = 'Invoke-DeploymentTestDotnet' } } -ParameterFilter { $Name -eq 'dotnet' }
         Mock Test-Path { $true } -ParameterFilter { $Path -match '[\\/]\.alm4dataverse[\\/]tools$' }
         Mock Invoke-DeploymentTestDotnet { $global:LASTEXITCODE = 0; 'microsoft.powerapps.cli.tool 2.16.1 pac' }
