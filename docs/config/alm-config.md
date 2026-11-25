@@ -886,3 +886,24 @@ Fork configuration is merged with `alm-config.psd1` as follows:
 - There is no separately loaded `fork-almconfig.psd1` file.
 
 This allows forks to add custom defaults that contribute custom config to each repo using the pipelines and without needing to make edits in each of those repos. For example, standard hook scripts can be added to extend ALM4Dataverse across every consuming repo. See the note above about `[alm]` placeholder allowing you to put the scripts in your fork of this repo.
+
+### TTEC Digital fork extensions
+
+The TTEC Digital fork retains these optional compatibility settings in its
+defaults. They are empty or disabled unless an application repository supplies
+values:
+
+- `DataSets`: datasets exported or imported by the TTEC lifecycle hooks.
+- `DefaultEnvVarValues`: default values for configured environment variables.
+- `DependencySolutions`: solutions that must be present before deployment.
+- `ExternalDependencySolutionNames`: externally managed solutions considered during export.
+- `IgnoreSolutions`: solutions excluded from TTEC processing.
+- `PostDependencySolutions`: solutions processed after dependency solutions.
+- `AadGroupTeams`, `AccessTeams`, `ApplicationUsers`, `BuDefaultTeams`, and `OwnerTeams`: team and application-user provisioning settings.
+- `CanvasAppSharing` and `FlowSharing`: sharing rules for canvas apps and flows.
+- `PluginSteps`: plug-in step configuration.
+- `Portals`: portal deployment configuration.
+- `SynapseFolders`: Synapse folders included in synchronization.
+- `SynapseRepositoryUrl`: Synapse repository URL.
+- `SynapseLinkedServicesInclude` and `SynapseLinkedServicesExclude`: linked-service selection patterns.
+- `SynapseManagedPrivateEndpoints`: Synapse managed private-endpoint configuration.

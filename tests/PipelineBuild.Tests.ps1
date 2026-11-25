@@ -104,6 +104,13 @@ Describe 'Build artifacts and solution-check helpers' {
                 PrivateData = @{ PSData = @{} }
             }
         } -ParameterFilter { $Name -eq 'Az.Accounts' }
+        Mock Get-Module {
+            [pscustomobject]@{
+                Path        = ''
+                Version     = [version]'0.8.0'
+                PrivateData = @{ PSData = @{} }
+            }
+        } -ParameterFilter { $Name -eq 'Az.ManagementPartner' }
         Mock Get-Command {
             $env:ALM_BUILD_TEST_PACK_COMMAND_RESOLVED = 'true'
             [pscustomobject]@{

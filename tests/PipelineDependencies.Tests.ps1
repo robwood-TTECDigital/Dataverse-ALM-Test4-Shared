@@ -68,11 +68,12 @@ Describe 'Dependency installation' {
             $version = switch ($Name) {
                 'Az.Accounts' { [version]'5.5.0' }
                 'Az.Resources' { [version]'2.0.0' }
+                'Az.ManagementPartner' { [version]'0.8.0' }
                 default { [version]'3.4.1' }
             }
             $prerelease = if ($Name -eq 'Rnwood.Dataverse.Data.PowerShell') { 'preview.1' } else { '' }
             [pscustomobject]@{ Version = $version; Prerelease = $prerelease }
-        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.Resources', 'Rnwood.Dataverse.Data.PowerShell') }
+        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.Resources', 'Az.ManagementPartner', 'Rnwood.Dataverse.Data.PowerShell') }
         Mock Get-Command { [pscustomobject]@{ Source = 'dotnet' } } -ParameterFilter { $Name -eq 'dotnet' }
         Mock Test-Path {
             param($Path, $LiteralPath)
@@ -153,19 +154,21 @@ Describe 'Dependency installation' {
         [AlmDependencyImportCapture]::ImportOrder = [System.Collections.Generic.List[string]]::new()
         Mock Install-Module { [pscustomobject]@{ Name = $Name; Version = '5.5.0' } } -ParameterFilter { $Name -eq 'Az.Accounts' }
         Mock Install-Module { [pscustomobject]@{ Name = $Name; Version = '2.0.0' } } -ParameterFilter { $Name -eq 'Az.Resources' }
+        Mock Install-Module { [pscustomobject]@{ Name = $Name; Version = '0.8.0' } } -ParameterFilter { $Name -eq 'Az.ManagementPartner' }
         Mock Install-Module { [pscustomobject]@{ Name = $Name; Version = '3.4.1-preview.1' } } -ParameterFilter { $Name -eq 'Rnwood.Dataverse.Data.PowerShell' }
         Mock Get-InstalledModule {
             [pscustomobject]@{ InstalledLocation = (Join-Path $TestDrive $Name) }
-        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.Resources', 'Rnwood.Dataverse.Data.PowerShell') }
+        } -ParameterFilter { $Name -in @('Az.Accounts', 'Az.Resources', 'Az.ManagementPartner', 'Rnwood.Dataverse.Data.PowerShell') }
         Mock Import-Module { [AlmDependencyImportCapture]::ImportOrder.Add([string]$Name) } -ParameterFilter { $Name -like '*.psd1' }
         Set-Content -LiteralPath 'alm-config.psd1' -Value "@{ scriptDependencies = @{ 'Rnwood.Dataverse.Data.PowerShell' = '3.4.1-preview.1'; 'Az.Resources' = '2.0.0' } }"
 
         { & (Join-Path $repoRoot 'pipelines/scripts/installdependencies.ps1') } | Should -Not -Throw
 
-        [AlmDependencyImportCapture]::ImportOrder | Should -HaveCount 3
-        [AlmDependencyImportCapture]::ImportOrder[0] | Should -Match 'Az.Accounts'
-        [AlmDependencyImportCapture]::ImportOrder[1] | Should -Match 'Az.Resources'
-        [AlmDependencyImportCapture]::ImportOrder[2] | Should -Match 'Rnwood.Dataverse.Data.PowerShell'
+        [AlmDependencyImportCapture]::ImportOrder | Should -HaveCount 4
+        foreach ($moduleName in [AlmDependencyImportCapture]::ImportOrder[0..2]) {
+            $moduleName | Should -Match 'Az\.'
+        }
+        [AlmDependencyImportCapture]::ImportOrder[3] | Should -Match 'Rnwood.Dataverse.Data.PowerShell'
     }
 
     It 'uses pinned lock-file module and CLI selectors' {
